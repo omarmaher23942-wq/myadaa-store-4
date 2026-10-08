@@ -1,0 +1,403 @@
+{
+  "schemaVersion": 1,
+  "variationSeed": "568583ed-3297-4a28-ab78-38c836e2ea89:0:2088497962",
+  "brand": {
+    "name": "ميادة فاشون",
+    "tagline": "",
+    "description": "تسوق من ميادة فاشون أونلاين بالدفع عند الاستلام وشحن لكل محافظات مصر.",
+    "voice": "friendly_egyptian",
+    "industry": "fashion"
+  },
+  "theme": {
+    "mode": "dark",
+    "palette": {
+      "primary": "#3e311e",
+      "primaryForeground": "#ffffff",
+      "secondary": "#e6e2da",
+      "secondaryForeground": "#0f172a",
+      "accent": "#ab7a2b",
+      "accentForeground": "#0f172a",
+      "background": "#f4f0e9",
+      "foreground": "#0f172a",
+      "muted": "#e6e2da",
+      "mutedForeground": "#0b1120",
+      "card": "#f5f0e8",
+      "cardForeground": "#0f172a",
+      "border": "#d3cec8",
+      "success": "#16a34a",
+      "warning": "#f59e0b",
+      "danger": "#dc2626"
+    },
+    "fonts": {
+      "heading": "noto_kufi",
+      "body": "cairo",
+      "baseSize": 16
+    },
+    "radius": "lg",
+    "buttonStyle": "solid",
+    "shadow": "soft",
+    "motion": "balanced",
+    "productCardStyle": "elevated",
+    "imageRatio": "square",
+    "backgroundPattern": "none",
+    "imageBackground": "none",
+    "ambientBackdrop": {
+      "layers": [
+        {
+          "color": "rgba(171, 122, 43, 0.12)",
+          "opacity": 1,
+          "position": "0% 100%",
+          "size": "55% 45%"
+        },
+        {
+          "color": "rgba(62, 49, 30, 0.08)",
+          "opacity": 1,
+          "position": "80% 20%",
+          "size": "50% 30%"
+        }
+      ],
+      "blendMode": "normal"
+    }
+  },
+  "design": {
+    "concept": "",
+    "mood": "",
+    "layout": {
+      "container": "normal",
+      "density": "balanced",
+      "headingAlign": "start"
+    },
+    "type": {
+      "headingWeight": 800,
+      "headingTracking": -0.01,
+      "headingScale": 1,
+      "bodyLeading": 1.75
+    },
+    "shape": {
+      "card": 16,
+      "button": 14,
+      "input": 12,
+      "image": 14,
+      "chip": 999
+    },
+    "surface": {
+      "background": "solid",
+      "rhythm": "alternate",
+      "divider": "none",
+      "grain": false
+    },
+    "elevation": {
+      "level": 1,
+      "border": 1
+    },
+    "card": {
+      "ratio": "portrait",
+      "fit": "cover",
+      "imagePad": 0,
+      "imageBg": "muted",
+      "align": "start",
+      "priceStyle": "bold",
+      "hover": "zoom",
+      "badge": "pill",
+      "showCategory": false,
+      "quickAdd": "icon"
+    },
+    "button": {
+      "fill": "solid",
+      "weight": 800,
+      "size": "md"
+    },
+    "icon": {
+      "stroke": 1.75,
+      "frame": "squircle",
+      "tone": "primary"
+    },
+    "heading": {
+      "style": "eyebrow"
+    },
+    "header": {
+      "surface": "glass",
+      "logoSize": "md"
+    }
+  },
+  "copy": {},
+  "locale": {
+    "language": "ar",
+    "currency": "EGP",
+    "timezone": "Africa/Cairo"
+  },
+  "header": {
+    "variant": "classic",
+    "sticky": true,
+    "transparentOnHero": false,
+    "showSearch": true,
+    "nav": [],
+    "showCategoriesMenu": true
+  },
+  "footer": {
+    "variant": "rich",
+    "tagline": "",
+    "showPaymentIcons": true,
+    "showChannels": true,
+    "showPoweredBy": true
+  },
+  "channels": {
+    "phone": "01094321957",
+    "whatsappNumber": "01094321957"
+  },
+  "home": [
+    {
+      "id": "emergency-announcement",
+      "enabled": true,
+      "spacing": "compact",
+      "background": "primary",
+      "reveal": "none",
+      "type": "announcement",
+      "variant": "marquee",
+      "messages": [
+        {
+          "text": "شحن سريع لجميع محافظات مصر"
+        },
+        {
+          "text": "الدفع عند الاستلام متاح"
+        },
+        {
+          "text": "معاينة المنتج قبل الدفع"
+        }
+      ],
+      "dismissible": false,
+      "sticky": true
+    },
+    {
+      "id": "emergency-hero",
+      "enabled": true,
+      "spacing": "spacious",
+      "background": "default",
+      "reveal": "fade",
+      "type": "hero",
+      "variant": "split",
+      "headline": "أهلاً بك في متجرنا",
+      "subheadline": "منتجات مختارة بعناية بأسعار منافسة، مع شحن سريع ودفع عند الاستلام.",
+      "images": [],
+      "primaryCta": {
+        "label": "تصفح المنتجات",
+        "target": {
+          "type": "all_products"
+        },
+        "style": "primary"
+      },
+      "highlights": [],
+      "overlayOpacity": 0.35,
+      "textAlign": "start",
+      "height": "tall",
+      "autoplayMs": 5000,
+      "enableParallax": true,
+      "enableKineticTypography": true,
+      "enableAmbientGlow": true
+    },
+    {
+      "id": "emergency-trust",
+      "enabled": true,
+      "spacing": "normal",
+      "background": "muted",
+      "reveal": "fade",
+      "type": "trust_badges",
+      "variant": "row",
+      "items": [
+        {
+          "icon": "banknote",
+          "title": "الدفع عند الاستلام"
+        },
+        {
+          "icon": "truck",
+          "title": "شحن لكل مصر"
+        },
+        {
+          "icon": "rotate-ccw",
+          "title": "استرجاع 14 يوم"
+        }
+      ]
+    },
+    {
+      "id": "emergency-grid",
+      "enabled": true,
+      "spacing": "normal",
+      "background": "default",
+      "reveal": "fade",
+      "type": "product_grid",
+      "variant": "grid",
+      "title": "منتجاتنا",
+      "source": {
+        "type": "featured"
+      },
+      "limit": 8,
+      "columnsMobile": 2,
+      "columnsDesktop": 4,
+      "showViewAll": true,
+      "quickAdd": true
+    },
+    {
+      "id": "emergency-faq",
+      "enabled": true,
+      "spacing": "normal",
+      "background": "default",
+      "reveal": "fade",
+      "type": "faq",
+      "variant": "accordion",
+      "title": "الأسئلة الشائعة",
+      "items": [
+        {
+          "q": "إزاي أطلب؟",
+          "a": "اختر المنتج، اضغط 'اطلب الآن'، واكتب بياناتك."
+        },
+        {
+          "q": "هل المعاينة متاحة؟",
+          "a": "نعم، يمكنك فحص المنتج مع مندوب التوصيل قبل الدفع."
+        },
+        {
+          "q": "الشحن كام يوم؟",
+          "a": "من 2 إلى 4 أيام عمل لباب المنزل."
+        },
+        {
+          "q": "طرق الدفع المتاحة؟",
+          "a": "دفع عند الاستلام، فودافون كاش، أو إنستاباي."
+        }
+      ]
+    }
+  ],
+  "productPage": {
+    "layout": "gallery_left",
+    "showSku": false,
+    "showAttributesTable": true,
+    "showReviews": true,
+    "showShareButtons": true,
+    "extraSections": []
+  },
+  "conversion": {
+    "stickyAddToCart": true,
+    "buyNowButton": false,
+    "freeShippingBar": {
+      "enabled": false,
+      "thresholdPiasters": 150000
+    },
+    "lowStockAlert": {
+      "enabled": true,
+      "threshold": 5
+    },
+    "socialProofToasts": {
+      "enabled": true,
+      "minOrdersToShow": 5,
+      "lookbackHours": 72
+    },
+    "liveViewers": true,
+    "exitIntentOffer": {
+      "enabled": false,
+      "title": "",
+      "text": "",
+      "showOncePerDays": 3
+    },
+    "productTrustRow": [],
+    "deliveryEstimate": true,
+    "recommendations": {
+      "frequentlyBoughtTogether": true,
+      "completeTheLook": true,
+      "recentlyViewed": true,
+      "cartUpsell": true
+    },
+    "expressCheckout": false,
+    "rememberCustomer": true,
+    "messengerOrderButton": true,
+    "showSavings": true,
+    "cartDrawer": true,
+    "shareButtons": true,
+    "ambientSound": false,
+    "cursorFollower": false,
+    "liveActivityBar": true,
+    "kineticTypography": true,
+    "viewTransitions": true,
+    "smartImageSequence": true,
+    "quickViewModal": true,
+    "stockPulseIndicator": true,
+    "product360Viewer": false,
+    "productARPreview": false,
+    "imageZoomLens": true,
+    "videoThumbs": true,
+    "multiLayerParallax": true,
+    "ambientBackdrop": true,
+    "scrollLinkedStory": true,
+    "comparisonBar": false,
+    "wishlistEnabled": true,
+    "voiceNavigation": false,
+    "aiSearch": true
+  },
+  "payments": {
+    "cod": {
+      "enabled": true
+    },
+    "vodafoneCash": {
+      "enabled": true,
+      "number": "01094321957"
+    },
+    "instapay": {
+      "enabled": true,
+      "address": "01092993469"
+    },
+    "requireTransferProof": true
+  },
+  "shipping": {
+    "freeOverPiasters": 150000,
+    "flatRatePiasters": null,
+    "generalEta": "من 2 إلى 4 أيام عمل",
+    "pickupEnabled": false,
+    "inspectionAllowed": false
+  },
+  "returns": {
+    "windowDays": 0,
+    "allowExchange": false,
+    "allowRefund": false,
+    "returnShippingPaidBy": "customer",
+    "refundDays": 7,
+    "conditions": [
+      "أن يكون المنتج بحالته الأصلية، غير مستخدم وغير مغسول.",
+      "أن يكون في تغليفه الأصلي مع كل الملحقات والبطاقات.",
+      "أن يكون معك كود الطلب أو رقم الموبايل المسجل به."
+    ],
+    "nonReturnable": "الملابس الداخلية ولبس البحر",
+    "defectPolicy": "replace_or_refund",
+    "defectReportHours": 48,
+    "defectShippingByStore": true
+  },
+  "checkout": {
+    "fields": {
+      "altPhone": "optional",
+      "city": "optional",
+      "landmark": "optional",
+      "notes": "optional",
+      "email": "hidden"
+    },
+    "customFields": [],
+    "minOrderPiasters": null,
+    "termsCheckbox": false,
+    "successMessage": "شكراً لطلبك! هنتواصل معاك خلال ساعات للتأكيد."
+  },
+  "orderMessages": {
+    "confirmed": "أهلاً {name}، تم تأكيد طلبك {code} بإجمالي {total}. هيوصلك خلال من 2 إلى 4 أيام عمل.",
+    "shipped": "طلبك {code} خرج مع شركة الشحن وهيوصلك قريباً. رقم الشحنة: {tracking}",
+    "delivered": "نتمنى يكون طلبك {code} عجبك. لو حابب تقيّم تجربتك: {review_link}",
+    "abandoned": "أهلاً {name}، لاحظنا إنك سبت {items} في السلة. محتاج مساعدة في إتمام الطلب؟"
+  },
+  "invoice": {
+    "showLogo": true,
+    "footerNote": "شكراً لتسوقك معنا — استرجاع خلال 0 يوم",
+    "showQr": true,
+    "paperSize": "A5",
+    "showPrices": true
+  },
+  "customCss": "",
+  "pages": [],
+  "seo": {
+    "title": "ميادة فاشون",
+    "description": "تسوق من ميادة فاشون أونلاين بالدفع عند الاستلام وشحن لكل محافظات مصر.",
+    "noIndex": false
+  }
+}

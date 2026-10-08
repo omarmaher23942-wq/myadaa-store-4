@@ -1,0 +1,7 @@
+// fonts.ts — خطوط متجرك فقط (مولّد من تصميم متجرك).
+import { Cairo, Noto_Kufi_Arabic } from "next/font/google";
+
+export const fontCairo = Cairo({ subsets: ["arabic", "latin"], variable: "--font-cairo", display: "swap" });
+export const fontKufi = Noto_Kufi_Arabic({ subsets: ["arabic"], variable: "--font-noto-kufi", display: "swap" });
+
+export const fontVariables = [fontCairo, fontKufi].map((f) => f.variable).join(" ");

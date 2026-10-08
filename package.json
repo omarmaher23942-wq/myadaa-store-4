@@ -1,0 +1,51 @@
+{
+  "name": "myadaa-store",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@ai-sdk/groq": "2.0.57",
+    "@google/model-viewer": "4.0.0",
+    "@neondatabase/serverless": "1.2.0",
+    "@tailwindcss/postcss": "4.3.3",
+    "@uploadthing/react": "7.3.3",
+    "ai": "5.0.272",
+    "clsx": "2.1.1",
+    "cmdk": "1.1.1",
+    "drizzle-orm": "0.41.0",
+    "lucide-react": "0.480.0",
+    "motion": "12.43.0",
+    "nanoid": "5.1.16",
+    "next": "15.5.27",
+    "next-themes": "0.4.6",
+    "pusher": "5.3.4",
+    "pusher-js": "8.6.0",
+    "qrcode": "1.5.4",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "recharts": "2.15.4",
+    "server-only": "0.0.1",
+    "sonner": "2.0.8",
+    "tailwind-merge": "3.7.0",
+    "tailwindcss": "4.3.3",
+    "three": "0.169.0",
+    "uploadthing": "7.7.4",
+    "zod": "3.25.76",
+    "zustand": "5.0.15"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "@types/node": "22.20.5",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@types/qrcode": "1.5.6"
+  }
+}

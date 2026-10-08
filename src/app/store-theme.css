@@ -1,0 +1,19 @@
+/* store-theme.css — ألوان متجرك (مولّد من تصميمه). التصميم الحي يُقرأ من قاعدتك ويمكن تعديله من اللوحة. */
+:root {
+  --store-primary: #3e311e;
+  --store-primary-foreground: #ffffff;
+  --store-secondary: #e6e2da;
+  --store-secondary-foreground: #0f172a;
+  --store-accent: #ab7a2b;
+  --store-accent-foreground: #0f172a;
+  --store-background: #f4f0e9;
+  --store-foreground: #0f172a;
+  --store-muted: #e6e2da;
+  --store-muted-foreground: #0b1120;
+  --store-card: #f5f0e8;
+  --store-card-foreground: #0f172a;
+  --store-border: #d3cec8;
+  --store-success: #16a34a;
+  --store-warning: #f59e0b;
+  --store-danger: #dc2626;
+}
