@@ -522,3 +522,40 @@
 @media (prefers-reduced-motion: reduce) {
   .fluid-frame::before, .fluid-frame::after { animation: none; }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   صفحة الهبوط (Landing): حركة CSS فقط، تتوقف لمن طلب تقليل الحركة.
+   ═══════════════════════════════════════════════════════════════ */
+@keyframes land-rise { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+@keyframes land-float { 0%, 100% { transform: translateY(0) rotate(-1deg); } 50% { transform: translateY(-12px) rotate(1deg); } }
+@keyframes land-pop { from { opacity: 0; transform: translateY(10px) scale(.96); } to { opacity: 1; transform: none; } }
+@keyframes land-shine { from { background-position: 0% 50%; } to { background-position: 200% 50%; } }
+@keyframes land-orb { 0%, 100% { opacity: .55; transform: translateX(-50%) scale(1); } 50% { opacity: .9; transform: translateX(-50%) scale(1.15); } }
+@keyframes mini-word { from { opacity: 0; transform: translateY(.5em); filter: blur(6px); } to { opacity: 1; transform: none; filter: blur(0); } }
+@keyframes mini-card { from { opacity: 0; transform: translateY(14px) scale(.97); } to { opacity: 1; transform: none; } }
+
+.land .land-rise > * { animation: land-rise .8s cubic-bezier(.22,1,.36,1) both; }
+.land .land-rise > *:nth-child(2) { animation-delay: .08s; }
+.land .land-rise > *:nth-child(3) { animation-delay: .18s; }
+.land .land-rise > *:nth-child(4) { animation-delay: .28s; }
+.land .land-rise > *:nth-child(5) { animation-delay: .38s; }
+.land .land-gradient-text {
+  background: linear-gradient(90deg, #8fa8ff, #6ee7b7, #c4b5fd, #8fa8ff);
+  background-size: 200% 100%;
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: land-shine 6s linear infinite;
+}
+.land .land-card { border: 1px solid rgb(255 255 255 / .08); background: linear-gradient(180deg, rgb(255 255 255 / .045), rgb(255 255 255 / .015)); transition: border-color .3s, transform .4s cubic-bezier(.22,1,.36,1), background-color .3s; }
+.land .land-card:hover { border-color: rgb(143 168 255 / .3); transform: translateY(-3px); }
+.land .land-spot::before { content: ""; position: absolute; inset: 0; pointer-events: none; background: radial-gradient(400px circle at var(--mx, 50%) var(--my, 0%), rgb(143 168 255 / .12), transparent 45%); opacity: 0; transition: opacity .4s; }
+.land .land-spot:hover::before { opacity: 1; }
+.land .land-tilt { transition: transform .6s cubic-bezier(.22,1,.36,1); }
+@media (hover: hover) { .land .land-tilt:hover { transform: perspective(1000px) rotateY(-6deg) rotateX(3deg) translateY(-6px); } }
+.land .land-float { animation: land-float 7s ease-in-out infinite; }
+.land .land-pop { animation: land-pop .6s cubic-bezier(.22,1,.36,1) both; }
+.land .land-orb { animation: land-orb 8s ease-in-out infinite; }
+.mini-store.mini-animate .mini-w { animation: mini-word .7s cubic-bezier(.22,1,.36,1) both; }
+.mini-store.mini-animate .mini-card { animation: mini-card .7s cubic-bezier(.22,1,.36,1) both; }
+@media (prefers-reduced-motion: reduce) {
+  .land *, .mini-store * { animation: none !important; transition: none !important; }
+}

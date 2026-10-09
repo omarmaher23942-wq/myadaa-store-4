@@ -135,6 +135,7 @@ export const heroSection = z.object({
     "kinetic",
     "ambient",
     "storyteller",
+    "orbit",
   ]).default("split"),
   eyebrow: z.string().max(60).optional(),
   headline: z.string().min(1).max(90),
@@ -644,6 +645,14 @@ export const designSchema = z.object({
   header: z.object({
     surface: z.enum(["solid", "glass", "transparent", "bordered"]).default("glass"),
     logoSize: z.enum(["sm", "md", "lg"]).default("md"),
+  }).default({}),
+  /**
+   * الحركة: calm ظهور ناعم فقط | lively ظهور متتابع وبطاقات تستجيب للمس | cinematic عناوين تتكشف كلمة كلمة،
+   * وعمق مع التمرير، وصور تتنفس. depth = عمق ثلاثي الأبعاد (ميل البطاقات مع المؤشر، وطبقات تتحرك مع التمرير).
+   */
+  motion: z.object({
+    level: z.enum(["calm", "lively", "cinematic"]).default("lively"),
+    depth: z.boolean().default(true),
   }).default({}),
 });
 export type Design = z.infer<typeof designSchema>;

@@ -25,6 +25,9 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: { "/setup": ["./drizzle/**/*"], "/api/setup": ["./drizzle/**/*"] },
   eslint: { ignoreDuringBuilds: true },
   images: {
+    // الصور تُقدَّم مباشرة من شبكة UploadThing (CDN سريع) بدل خادم تحسين الصور في Vercel: خطة Vercel
+    // المجانية لها حد شهري لتحسين الصور، وعند تجاوزه أو تعذّر جلب الأصل تظهر الصورة مكسورة (خطأ 400/402).
+    unoptimized: true,
     formats: ["image/avif", "image/webp"],
     minimumCacheTTL: 31536000,
     remotePatterns: [

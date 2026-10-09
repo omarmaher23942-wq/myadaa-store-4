@@ -4,6 +4,7 @@
 // مسار شراء واحد فقط: «اشترِ الآن» يضع المنتج في السلة وينقل العميل لصفحة إتمام الطلب، حيث يختار
 // بوضوح متى وكيف يدفع (عند الاستلام أو مقدماً بالتحويل). لا نوافذ طلب سريع تخفي الاختيار أو تفرضه.
 // صف الثقة أسفل الأزرار يُشتق من حقائق المتجر الفعلية، فلا يَعِد بما لا يطبقه التاجر.
+import { colorFromName } from "@/lib/color-names";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Minus, Plus, ShoppingBag, Share2, Check, ArrowLeft } from "lucide-react";
@@ -218,19 +219,5 @@ export function ProductPurchase({ product: p }: { product: PurchaseProduct; paym
 }
 
 function colorFromLabel(label: string): string {
-  const l = label.toLowerCase();
-  if (/black|أسود|اسود/.test(l)) return "#111111";
-  if (/white|أبيض|ابيض/.test(l)) return "#ffffff";
-  if (/red|أحمر|احمر/.test(l)) return "#dc2626";
-  if (/navy|كحلي/.test(l)) return "#1e293b";
-  if (/blue|أزرق|ازرق/.test(l)) return "#1e40af";
-  if (/green|أخضر|اخضر|زيتي/.test(l)) return "#166534";
-  if (/yellow|أصفر|اصفر/.test(l)) return "#eab308";
-  if (/beige|بيج/.test(l)) return "#d6c7a1";
-  if (/brown|بني/.test(l)) return "#7c4a2d";
-  if (/gr[ae]y|رمادي/.test(l)) return "#9ca3af";
-  if (/pink|وردي|بينك/.test(l)) return "#f472b6";
-  if (/gold|ذهبي/.test(l)) return "#d4a017";
-  if (/silver|فضي/.test(l)) return "#c0c0c0";
-  return "var(--muted)";
+  return colorFromName(label) ?? "var(--muted)";
 }

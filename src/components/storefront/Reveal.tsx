@@ -6,6 +6,7 @@
 // - RevealItem للأطفال داخل stagger container.
 import { motion, useReducedMotion, type Variants } from "motion/react";
 import type { Section } from "@/blueprint/schema";
+import { useMotionLevel } from "./StoreProvider";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
 
@@ -52,8 +53,10 @@ export function Reveal({
   "data-tone"?: string;
 }) {
   const reduce = useReducedMotion();
+  // مستوى الحركة الذي اختاره المتجر: الهادئ بلا حركة ظهور، والسينمائي بتكشّف ضبابي أعمق.
+  const level = useMotionLevel();
 
-  if (reduce || kind === "none") {
+  if (reduce || kind === "none" || level === "calm") {
     const Comp = Tag as unknown as React.ElementType;
     return (
       <Comp className={className} data-tone={tone}>
@@ -63,7 +66,7 @@ export function Reveal({
   }
 
   const M = motion[Tag] as unknown as typeof motion.div;
-  const variants = V[kind ?? "fade"];
+  const variants = level === "cinematic" && (kind === "fade" || kind === "slide_up") ? V.kinetic : V[kind ?? "fade"];
 
   return (
     <M
@@ -87,7 +90,8 @@ export function RevealItem({
   className?: string;
 }) {
   const reduce = useReducedMotion();
-  if (reduce) {
+  const level = useMotionLevel();
+  if (reduce || level === "calm") {
     return <div className={className}>{children}</div>;
   }
   return (

@@ -118,6 +118,13 @@ async function readBlueprintData(storeId: string): Promise<unknown> {
   return row?.data ?? null;
 }
 
+/** الـ Blueprint من القاعدة مباشرة بلا كاش، لصفحات اللوحة التي تعرض ما حُفظ للتو. */
+export async function readBlueprintFresh(storeId: string): Promise<StoreBlueprint> {
+  const data = await readBlueprintData(storeId);
+  if (!data) notFound();
+  return blueprintSchema.parse(data);
+}
+
 export const getBlueprint = cache(
   async (storeId: string): Promise<StoreBlueprint> => {
     const key = rkeys.blueprint(storeId);

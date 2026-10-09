@@ -22,10 +22,11 @@ export async function dashboardStats(storeId: string, days: RangeDays = 30) {
 
   const [ev] = await db
     .select({
-      views: sql<number>`count(*) filter (where name='page_view')`.mapWith(Number),
+      // زيارة = جهاز في يوم (التحديث والخروج والعودة في نفس اليوم لا تكرر الزيارة).
+      views: sql<number>`count(distinct (visitor_id || ':' || to_char(created_at at time zone 'Africa/Cairo','YYYY-MM-DD'))) filter (where name='page_view')`.mapWith(Number),
       visitors: sql<number>`count(distinct visitor_id)`.mapWith(Number),
-      atc: sql<number>`count(*) filter (where name='add_to_cart')`.mapWith(Number),
-      checkouts: sql<number>`count(*) filter (where name='begin_checkout')`.mapWith(Number),
+      atc: sql<number>`count(distinct visitor_id) filter (where name='add_to_cart')`.mapWith(Number),
+      checkouts: sql<number>`count(distinct visitor_id) filter (where name='begin_checkout')`.mapWith(Number),
     })
     .from(analyticsEvents)
     .where(
@@ -146,11 +147,12 @@ export async function analyticsStats(storeId: string, days: RangeDays = 30) {
   // قمع التحويل.
   const [funnel] = await db
     .select({
-      views: sql<number>`count(*) filter (where name='page_view')`.mapWith(Number),
-      productViews: sql<number>`count(*) filter (where name='product_view')`.mapWith(Number),
-      atc: sql<number>`count(*) filter (where name='add_to_cart')`.mapWith(Number),
-      checkouts: sql<number>`count(*) filter (where name='begin_checkout')`.mapWith(Number),
-      purchases: sql<number>`count(*) filter (where name='purchase')`.mapWith(Number),
+      // زيارة = جهاز في يوم (التحديث والخروج والعودة في نفس اليوم لا تكرر الزيارة).
+      views: sql<number>`count(distinct (visitor_id || ':' || to_char(created_at at time zone 'Africa/Cairo','YYYY-MM-DD'))) filter (where name='page_view')`.mapWith(Number),
+      productViews: sql<number>`count(distinct visitor_id) filter (where name='product_view')`.mapWith(Number),
+      atc: sql<number>`count(distinct visitor_id) filter (where name='add_to_cart')`.mapWith(Number),
+      checkouts: sql<number>`count(distinct visitor_id) filter (where name='begin_checkout')`.mapWith(Number),
+      purchases: sql<number>`count(distinct visitor_id) filter (where name='purchase')`.mapWith(Number),
     })
     .from(analyticsEvents)
     .where(

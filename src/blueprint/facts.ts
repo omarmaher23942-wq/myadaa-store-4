@@ -150,3 +150,64 @@ export function groundedItems<T extends { fact?: string; title?: string; text?: 
   }
   return out;
 }
+
+/** هل تصح كل الادعاءات في هذا النص الآن؟ (بنفس قواعد groundedItems، بما فيها الأرقام). */
+function claimHolds(segment: string, facts: StoreFact[]): boolean {
+  const keys = CLAIMS.filter((c) => c.re.test(segment)).map((c) => c.key);
+  if (keys.length <= 1) return groundedItems([{ text: segment }], facts, "drop").length === 1;
+  // أكثر من ادعاء في نفس الجملة: تصح فقط إن كانت كل حقيقة متاحة (والأرقام تُفحص لاحقاً على مستوى العبارة).
+  return keys.every((key) => groundedItems([{ fact: key }], facts, "drop").length === 1);
+}
+
+// فواصل الجمل والعبارات في النص الحر: نهاية جملة، فاصلة، سطر جديد، أو واو عطف في بداية كلمة.
+const SENTENCE = /[^.!؟?\n]+[.!؟?]*|\n/g;
+const CLAUSE = /(،|,|؛|\s+-\s+|\s+(?=و\S))/;
+
+/**
+ * نص حر (وصف المتجر، شعار الفوتر، وصف محركات البحث، صفحة «عن المتجر») بعد حذف أي عبارة تدّعي سياسة
+ * غير صحيحة الآن: «وشحن لكل محافظات مصر» تُحذف إن كان المتجر يشحن لبعض المحافظات فقط، ويبقى باقي الجملة.
+ */
+export function groundedText(text: string | undefined | null, facts: StoreFact[]): string {
+  if (!text) return "";
+  const out: string[] = [];
+  for (const sentence of text.match(SENTENCE) ?? []) {
+    if (sentence === "\n") {
+      out.push("\n");
+      continue;
+    }
+    if (!sentence.trim()) continue;
+    if (!claimedFact(sentence) || claimHolds(sentence, facts)) {
+      out.push(sentence);
+      continue;
+    }
+    const end = /[.!؟?]\s*$/.exec(sentence)?.[0]?.trim() ?? "";
+    const body = end ? sentence.slice(0, sentence.lastIndexOf(end)) : sentence;
+    const parts = body.split(CLAUSE);
+    const kept: string[] = [];
+    for (let i = 0; i < parts.length; i += 2) {
+      const seg = parts[i] ?? "";
+      if (claimedFact(seg) && !claimHolds(seg, facts)) continue;
+      if (kept.length && parts[i - 1] !== undefined) kept.push(parts[i - 1]!);
+      kept.push(seg);
+    }
+    const joined = kept.join("").replace(/^[\s،,؛-]+|[\s،,؛-]+$/g, "").replace(/^و(?=\S)/, "");
+    // جملة بقي منها أقل من كلمتين بلا معنى: تُحذف كلها.
+    if (joined.split(/\s+/).filter(Boolean).length >= 2) out.push(`${joined}${end}`);
+  }
+  return out
+    .map((s) => (s === "\n" ? s : s.trim()))
+    .join(" ")
+    .replace(/ ?\n ?/g, "\n")
+    .trim();
+}
+
+/** نسخة من الـ Blueprint بنصوص حرة صادقة (تُستخدم عند العرض فقط، ولا تُحفظ). */
+export function truthfulBlueprint(bp: StoreBlueprint, facts: StoreFact[]): StoreBlueprint {
+  const g = (t: string | undefined) => (t ? groundedText(t, facts) || undefined : t);
+  return {
+    ...bp,
+    brand: { ...bp.brand, description: g(bp.brand.description), tagline: g(bp.brand.tagline) },
+    footer: { ...bp.footer, tagline: g(bp.footer.tagline) },
+    seo: { ...bp.seo, description: g(bp.seo.description), title: g(bp.seo.title) },
+  };
+}

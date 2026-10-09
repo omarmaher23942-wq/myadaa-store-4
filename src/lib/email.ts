@@ -24,6 +24,8 @@ export type SendTemplatedOptions = {
   idempotencyKey?: string;
   tags?: Array<{ name: string; value: string }>;
   senderKind?: SenderKind;
+  /** اسم المرسل الظاهر للعميل (اسم المتجر في رسائل الطلبات)، وإلا Colapia. */
+  fromName?: string;
   storeSubdomain?: string;
   merchantId?: string;
   storeId?: string;
@@ -65,13 +67,20 @@ function validRecipients(to: string | string[]): string[] {
  */
 function resolveFrom(
   senderKind: SenderKind,
-  _storeSubdomain?: string
+  _storeSubdomain?: string,
+  fromName?: string
 ): string {
   const rootDomain = clientEnv.NEXT_PUBLIC_ROOT_DOMAIN || "colapia.com";
-  const displayName = "Colapia";
+  // اسم العرض بلا رموز تكسر ترويسة البريد.
+  const displayName = (fromName ?? "").replace(/[<>"\r\n]/g, "").trim().slice(0, 60) || "Colapia";
 
   if (senderKind === "custom") {
     return env.EMAIL_FROM || `${displayName} <hello@${rootDomain}>`;
+  }
+  // نسخة التاجر: عنوان الإرسال من EMAIL_FROM (نطاقه الموثّق في Resend) باسم متجره.
+  if (env.EMAIL_FROM && !env.EMAIL_FROM.includes(rootDomain)) {
+    const addr = /<([^>]+)>/.exec(env.EMAIL_FROM)?.[1] ?? env.EMAIL_FROM;
+    return `${displayName} <${addr}>`;
   }
 
   const prefix =
@@ -213,7 +222,7 @@ export async function sendTemplatedEmail(
   if (!env.RESEND_API_KEY) return { ok: false, error: "email_disabled" };
 
   const senderKind = opts.senderKind ?? "hello";
-  const from = resolveFrom(senderKind, opts.storeSubdomain);
+  const from = resolveFrom(senderKind, opts.storeSubdomain, opts.fromName);
   const shouldTrack = opts.tracking !== false;
 
   const logId = crypto.randomUUID();
@@ -438,6 +447,7 @@ export async function sendCustomerOrderConfirmationEmail(args: {
     subject: `تم استلام طلبك ${args.orderCode} من ${args.storeName}`,
     element: OrderConfirmationCustomerEmail(args),
     senderKind: "orders",
+    fromName: args.storeName,
     storeSubdomain: args.storeSubdomain,
     storeId: args.storeId,
     entityId: args.orderCode,
@@ -467,6 +477,7 @@ export async function sendCustomerOrderShippedEmail(args: {
     subject: `طلبك ${args.orderCode} في الطريق إليك`,
     element: OrderShippedEmail(args),
     senderKind: "orders",
+    fromName: args.storeName,
     storeSubdomain: args.storeSubdomain,
     storeId: args.storeId,
     entityId: args.orderCode,

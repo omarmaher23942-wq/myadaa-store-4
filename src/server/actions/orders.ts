@@ -1,6 +1,8 @@
 ﻿"use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
+import { notifyCustomerOfStatus } from "@/server/order-notify";
 import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { getTenantDb } from "@/db/tenant";
@@ -120,6 +122,14 @@ export async function setOrderStatusAction(
     changedBy: `merchant:${s.merchantId}`,
     changedAt: now.toISOString(),
   });
+
+  if (status !== o.status) {
+    after(() =>
+      notifyCustomerOfStatus({ id: s.storeId, subdomain: s.store.subdomain }, o, status).catch((e) =>
+        console.error("[setOrderStatusAction] customer notify failed:", e)
+      )
+    );
+  }
 
   revalidatePath("/dashboard/orders");
 }

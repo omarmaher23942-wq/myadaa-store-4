@@ -21,6 +21,7 @@ import {
 import { UploadButton } from "@/lib/uploadthing-client";
 import { saveProductAction } from "@/server/actions/products";
 import { AiWriteButton } from "./AiWriteButton";
+import { VariantMatrix } from "./VariantMatrix";
 import { cn } from "@/lib/utils";
 
 type ImageItem = { url: string; key?: string; alt?: string };
@@ -101,9 +102,6 @@ export function ProductForm({
   }));
 
   const [pending, start] = useTransition();
-  const [dialog, setDialog] = useState<
-    "addVariant" | "uniformPrice" | null
-  >(null);
   const router = useRouter();
 
   const up = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) =>
@@ -120,41 +118,6 @@ export function ProductForm({
   };
   const removeAttribute = (i: number) =>
     up("attributes", f.attributes.filter((_, k) => k !== i));
-
-  // ─── Variants ───────────────────────────────────────────────────────────
-  const commitAddVariant = (label: string) => {
-    const clean = label.trim();
-    if (!clean) return;
-    const newVar: VariantItem = {
-      optionValues: [clean],
-      price: Number(f.price) || 0,
-      stock: 15,
-      isAvailable: true,
-    };
-    up("variants", [...f.variants, newVar]);
-    if (!f.optionNames.length) up("optionNames", ["الخيار"]);
-    setDialog(null);
-  };
-
-  const removeVariant = (i: number) =>
-    up("variants", f.variants.filter((_, k) => k !== i));
-
-  const updateVariant = (i: number, patch: Partial<VariantItem>) => {
-    const next = [...f.variants];
-    if (!next[i]) return;
-    next[i] = { ...next[i]!, ...patch };
-    up("variants", next);
-  };
-
-  const commitUniformPrice = (price: number) => {
-    up("price", price);
-    up(
-      "variants",
-      f.variants.map((v) => ({ ...v, price }))
-    );
-    toast.success(`تم تعيين السعر ${price} ج.م لجميع الخيارات`);
-    setDialog(null);
-  };
 
   // ─── Submit ─────────────────────────────────────────────────────────────
   const submit = () =>
@@ -342,92 +305,19 @@ export function ProductForm({
 
           {/* Variants */}
           <section className="space-y-3 rounded-2xl border border-edge/10 bg-edge/[0.02] p-5">
-            <header className="flex items-center justify-between border-b border-edge/5 pb-3">
-              <div>
-                <h3 className="flex items-center gap-1.5 text-sm font-black text-ink">
-                  <Shirt className="size-4" strokeWidth={2} aria-hidden="true" />
-                  المقاسات والألوان
-                </h3>
-                <p className="mt-0.5 text-[11px] text-ink-3">
-                  حدد أسعار ومخزون كل خيار.
-                </p>
-              </div>
-              <div className="flex items-center gap-1.5">
-                {f.variants.length > 1 ? (
-                  <button
-                    type="button"
-                    onClick={() => setDialog("uniformPrice")}
-                    className="inline-flex h-9 items-center gap-1 rounded-lg border border-edge/10 bg-edge/[0.03] px-2.5 text-[11px] font-bold text-ink-2 transition-colors hover:bg-edge/[0.06]"
-                  >
-                    <Wand2 className="size-3" strokeWidth={2.25} aria-hidden="true" />
-                    سعر موحد
-                  </button>
-                ) : null}
-                <button
-                  type="button"
-                  onClick={() => setDialog("addVariant")}
-                  className="inline-flex h-9 items-center gap-1 rounded-lg border border-edge/10 bg-edge/[0.03] px-2.5 text-[11px] font-bold text-ink transition-colors hover:bg-edge/[0.06]"
-                >
-                  <Plus className="size-3" strokeWidth={2.25} aria-hidden="true" />
-                  إضافة
-                </button>
-              </div>
+            <header className="border-b border-edge/5 pb-3">
+              <h3 className="flex items-center gap-1.5 text-sm font-black text-ink">
+                <Shirt className="size-4" strokeWidth={2} aria-hidden="true" />
+                المقاسات والألوان
+              </h3>
+              <p className="mt-0.5 text-[11px] text-ink-3">اكتب الخيارات وقيمها، وتتولد كل التركيبات بمخزونها وسعرها تلقائياً.</p>
             </header>
-
-            <ul className="space-y-2">
-              {f.variants.map((v, i) => (
-                <li
-                  key={i}
-                  className="flex flex-wrap items-center gap-2 rounded-xl border border-edge/5 bg-edge/[0.02] p-2.5"
-                >
-                  <input
-                    className="h-9 w-32 rounded-lg border border-edge/10 bg-edge/[0.03] px-2 text-xs font-bold text-ink"
-                    placeholder="المقاس"
-                    value={v.optionValues.join(" / ")}
-                    onChange={(e) =>
-                      updateVariant(i, { optionValues: [e.target.value] })
-                    }
-                  />
-                  <div className="flex items-center gap-1">
-                    <span className="text-[11px] text-ink-3">السعر:</span>
-                    <input
-                      type="number"
-                      dir="ltr"
-                      className="h-9 w-24 rounded-lg border border-edge/10 bg-edge/[0.03] px-2 font-mono text-xs font-bold text-ink"
-                      value={v.price ?? ""}
-                      onChange={(e) =>
-                        updateVariant(i, { price: Number(e.target.value) })
-                      }
-                    />
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <span className="text-[11px] text-ink-3">القطع:</span>
-                    <input
-                      type="number"
-                      dir="ltr"
-                      className="h-9 w-20 rounded-lg border border-edge/10 bg-edge/[0.03] px-2 font-mono text-xs font-bold text-ink"
-                      value={v.stock ?? ""}
-                      onChange={(e) =>
-                        updateVariant(i, { stock: Number(e.target.value) })
-                      }
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => removeVariant(i)}
-                    className="ms-auto grid size-9 place-items-center rounded-lg text-rose-600 dark:text-rose-400 transition-colors hover:bg-rose-500/10"
-                    aria-label="حذف"
-                  >
-                    <Trash2 className="size-3.5" strokeWidth={2.25} aria-hidden="true" />
-                  </button>
-                </li>
-              ))}
-            </ul>
-            {f.variants.length === 0 ? (
-              <p className="py-1 text-[11px] text-ink-3">
-                منتج بسيط بدون مقاسات/ألوان.
-              </p>
-            ) : null}
+            <VariantMatrix
+              optionNames={f.optionNames}
+              variants={f.variants}
+              basePrice={Number(f.price) || 0}
+              onChange={(optionNames, variants) => setF((s) => ({ ...s, optionNames, variants }))}
+            />
           </section>
 
           {/* Attributes */}
@@ -593,144 +483,6 @@ export function ProductForm({
         </aside>
       </div>
 
-      {/* Dialogs */}
-      {dialog === "addVariant" ? (
-        <AddVariantDialog
-          onCancel={() => setDialog(null)}
-          onConfirm={commitAddVariant}
-        />
-      ) : null}
-      {dialog === "uniformPrice" ? (
-        <UniformPriceDialog
-          initial={String(f.price || 250)}
-          onCancel={() => setDialog(null)}
-          onConfirm={commitUniformPrice}
-        />
-      ) : null}
     </form>
-  );
-}
-
-// ─── Dialog: Add Variant ────────────────────────────────────────────────────
-function AddVariantDialog({
-  onConfirm,
-  onCancel,
-}: {
-  onConfirm: (label: string) => void;
-  onCancel: () => void;
-}) {
-  const [label, setLabel] = useState("");
-  return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      className="fixed inset-0 z-[80] grid place-items-center bg-black/65 p-4 backdrop-blur-sm"
-      onClick={onCancel}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-sm rounded-3xl border border-edge/10 bg-space-2 p-6 shadow-2xl"
-      >
-        <h3 className="text-lg font-black text-ink">إضافة خيار / مقاس</h3>
-        <p className="mt-2 text-xs text-ink-3">
-          مثال: أحمر، أسود، M، L، XL، 42.
-        </p>
-        <input
-          autoFocus
-          value={label}
-          onChange={(e) => setLabel(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") onConfirm(label);
-          }}
-          className="mt-4 h-11 w-full rounded-xl border border-edge/10 bg-edge/[0.03] px-3 text-xs font-bold text-ink outline-none focus:ring-2 focus:ring-nova/40"
-          placeholder="اسم الخيار"
-        />
-        <div className="mt-5 flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="h-11 rounded-xl border border-edge/10 bg-edge/[0.03] px-4 text-xs font-bold text-ink-2 transition-colors hover:bg-edge/[0.06]"
-          >
-            إلغاء
-          </button>
-          <button
-            type="button"
-            onClick={() => onConfirm(label)}
-            disabled={!label.trim()}
-            className="inline-flex h-11 items-center gap-1.5 rounded-xl bg-nova px-4 text-xs font-black text-white transition-colors hover:bg-nova disabled:opacity-50"
-          >
-            <Check className="size-3.5" strokeWidth={2.5} aria-hidden="true" />
-            إضافة
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Dialog: Uniform Price ─────────────────────────────────────────────────
-function UniformPriceDialog({
-  initial,
-  onConfirm,
-  onCancel,
-}: {
-  initial: string;
-  onConfirm: (price: number) => void;
-  onCancel: () => void;
-}) {
-  const [value, setValue] = useState(initial);
-  const n = Number(value);
-  const valid = Number.isFinite(n) && n >= 0;
-
-  return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      className="fixed inset-0 z-[80] grid place-items-center bg-black/65 p-4 backdrop-blur-sm"
-      onClick={onCancel}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-sm rounded-3xl border border-edge/10 bg-space-2 p-6 shadow-2xl"
-      >
-        <h3 className="flex items-center gap-2 text-lg font-black text-ink">
-          <Percent className="size-5 text-nova-2" strokeWidth={2} aria-hidden="true" />
-          تطبيق سعر موحّد
-        </h3>
-        <p className="mt-2 text-xs text-ink-3">
-          سيطبَّق على جميع الخيارات والمقاسات.
-        </p>
-        <input
-          autoFocus
-          type="number"
-          min={0}
-          dir="ltr"
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && valid) onConfirm(n);
-          }}
-          className="mt-4 h-11 w-full rounded-xl border border-edge/10 bg-edge/[0.03] px-3 text-center font-mono text-lg font-black text-ink outline-none focus:ring-2 focus:ring-nova/40"
-        />
-        <div className="mt-5 flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="h-11 rounded-xl border border-edge/10 bg-edge/[0.03] px-4 text-xs font-bold text-ink-2 transition-colors hover:bg-edge/[0.06]"
-          >
-            إلغاء
-          </button>
-          <button
-            type="button"
-            disabled={!valid}
-            onClick={() => onConfirm(n)}
-            className="inline-flex h-11 items-center gap-1.5 rounded-xl bg-nova px-4 text-xs font-black text-white transition-colors hover:bg-nova disabled:opacity-50"
-          >
-            <Check className="size-3.5" strokeWidth={2.5} aria-hidden="true" />
-            تطبيق
-          </button>
-        </div>
-      </div>
-    </div>
   );
 }

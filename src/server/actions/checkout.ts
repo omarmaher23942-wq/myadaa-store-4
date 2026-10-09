@@ -29,7 +29,7 @@ import {
 import { normalizeEgyptianPhone } from "@/lib/phone";
 import { governorateName, GOVERNORATES } from "@/lib/egypt";
 import { formatEgp } from "@/lib/money";
-import { grantOrderAccess, hasOrderAccess } from "@/lib/order-access";
+import { ensureDeviceId, grantOrderAccess, hasOrderAccess } from "@/lib/order-access";
 import {
   sendMerchantNewOrderEmail,
   sendCustomerOrderConfirmationEmail,
@@ -471,6 +471,8 @@ export async function placeOrderAction(
     const total =
       Math.max(0, subtotal - discountAmount) + ship.fee + ship.codExtra;
     const now = new Date();
+    // الطلب يُحفظ بجهاز العميل: يجده في «طلباتي» على نفس الجهاز دون حساب ولا رقم طلب.
+    const deviceId = await ensureDeviceId(store.id);
     const customerRef =
       sql`(select ${customers.id} from ${customers} where ${customers.storeId} = ${store.id} and ${customers.phone} = ${input.phone})`;
 
@@ -540,7 +542,7 @@ export async function placeOrderAction(
             transferSenderPhone: input.transferSenderPhone || null,
             transferScreenshotUrl: input.transferScreenshotUrl || null,
             statusHistory: [{ status: "new", at: now.toISOString() }],
-            visitorId: input.visitorId,
+            visitorId: deviceId,
             idempotencyKey: input.idempotencyKey,
           }),
 
@@ -899,7 +901,7 @@ export async function submitTransferProofAction(
 
     if (!order) return { ok: false, error: "الطلب غير موجود" };
 
-    const hasAccess = await hasOrderAccess(store.id, input.code);
+    const hasAccess = await hasOrderAccess(store.id, input.code, order.visitorId);
     const normalizedAccessPhone = input.accessPhone
       ? normalizeEgyptianPhone(input.accessPhone)
       : null;

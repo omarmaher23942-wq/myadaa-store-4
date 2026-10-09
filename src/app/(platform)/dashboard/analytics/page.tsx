@@ -30,7 +30,7 @@ import { analyticsStats, type RangeDays } from "@/server/repos/analytics";
 import { formatEgp } from "@/lib/money";
 import { GOVERNORATES } from "@/lib/egypt";
 import { getTenantDb } from "@/db/tenant";
-import { orders, customers } from "@/db/schema";
+import { orders, customers, analyticsEvents } from "@/db/schema";
 import { and, eq, gte, lt, sql, ne } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
@@ -110,7 +110,7 @@ export default async function AnalyticsPage({
   const periodStart = new Date(now.getTime() - days * 86_400_000);
   const prevPeriodStart = new Date(now.getTime() - 2 * days * 86_400_000);
 
-  const [prevPeriod, cohorts] = await Promise.all([
+  const [prevPeriod, cohorts, visitsCmp, customersCmp] = await Promise.all([
     db
       .select({
         orders: sql<number>`count(*)`.mapWith(Number),
@@ -138,6 +138,23 @@ export default async function AnalyticsPage({
       .groupBy(sql`1`)
       .orderBy(sql`1 desc`)
       .limit(6),
+
+    // زيارات الفترة السابقة الحقيقية للمقارنة (جهاز في يوم).
+    db
+      .select({
+        prev: sql<number>`count(distinct (visitor_id || ':' || to_char(created_at at time zone 'Africa/Cairo','YYYY-MM-DD'))) filter (where name='page_view' and created_at < ${periodStart.toISOString()})`.mapWith(Number),
+      })
+      .from(analyticsEvents)
+      .where(and(eq(analyticsEvents.storeId, storeId), gte(analyticsEvents.createdAt, prevPeriodStart))),
+
+    // العملاء الجدد في الفترة الحالية والسابقة.
+    db
+      .select({
+        current: sql<number>`count(*) filter (where ${customers.createdAt} >= ${periodStart.toISOString()})`.mapWith(Number),
+        previous: sql<number>`count(*) filter (where ${customers.createdAt} >= ${prevPeriodStart.toISOString()} and ${customers.createdAt} < ${periodStart.toISOString()})`.mapWith(Number),
+      })
+      .from(customers)
+      .where(eq(customers.storeId, storeId)),
   ]);
 
   const prev = prevPeriod[0]!;
@@ -214,17 +231,17 @@ export default async function AnalyticsPage({
         />
         <KpiBlock
           icon={Users}
-          label="العملاء"
-          value={cohorts.reduce((a, c) => a + c.count, 0).toLocaleString("ar-EG")}
-          current={cohorts.reduce((a, c) => a + c.count, 0)}
-          previous={Math.max(1, Math.round(cohorts.reduce((a, c) => a + c.count, 0) * 0.8))}
+          label="عملاء جدد"
+          value={(customersCmp[0]?.current ?? 0).toLocaleString("ar-EG")}
+          current={customersCmp[0]?.current ?? 0}
+          previous={customersCmp[0]?.previous ?? 0}
         />
         <KpiBlock
           icon={Eye}
           label="زيارات المتجر"
           value={funnel.views.toLocaleString("ar-EG")}
           current={funnel.views}
-          previous={Math.max(1, Math.round(funnel.views * 0.85))}
+          previous={visitsCmp[0]?.prev ?? 0}
         />
       </section>
 

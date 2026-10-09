@@ -17,7 +17,7 @@ export async function saveKeyAction(raw: unknown): Promise<Result> {
   if (!p.success) return { ok: false, error: "الصق المفتاح كاملاً" };
   const check = await PROVIDERS[p.data.provider](p.data.key);
   if (!check.ok) return { ok: false, error: check.error };
-  await setSetting(`keys.${p.data.provider}`, p.data.key.trim());
+  await setSetting(`keys.${p.data.provider}`, check.value);
   revalidatePath("/dashboard/integrations");
   return { ok: true, data: null };
 }

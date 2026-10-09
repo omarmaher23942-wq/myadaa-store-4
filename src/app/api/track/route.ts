@@ -9,11 +9,12 @@ import { analyticsEvents, products } from "@/db/schema";
 import { allow, clientIp } from "@/lib/ratelimit";
 import { redis } from "@/lib/redis";
 import { getStoreBySubdomain, isStorePubliclyVisible } from "@/lib/tenant";
+import { isBot, isStoreOwner, visitorOf } from "@/server/visitor";
 
 const uuid = z.string().uuid();
 
 const schema = z.object({
-  vid: z.string().min(8).max(64),
+  vid: z.string().min(8).max(64).optional(),
   sid: z.string().min(8).max(64),
   events: z
     .array(
@@ -43,11 +44,16 @@ export async function POST(req: Request) {
 
   const body = schema.safeParse(await req.json().catch(() => null));
   if (!body.success) return NextResponse.json({ ok: false }, { status: 400 });
-  const { vid, sid, events } = body.data;
+  const { sid, events } = body.data;
 
+  // لا نحسب برامج الفحص ولا صاحب المتجر وهو يتصفح متجره.
+  if (isBot(req.headers) || isStoreOwner(req.headers)) return NextResponse.json({ ok: true });
   if (!(await allow("track_events", `${store.id}:${clientIp(req.headers)}`))) {
     return NextResponse.json({ ok: true });
   }
+  // هوية الجهاز من الخادم لا من المتصفح: الزيارة تُحسب للجهاز مرة واحدة في اليوم.
+  const visitor = visitorOf(req.headers, store.id);
+  const vid = visitor.id;
   const db = await getTenantDb(store.id);
 
   // نقبل فقط معرّفات منتجات تخص هذا المتجر.
@@ -88,7 +94,7 @@ export async function POST(req: Request) {
     .filter((id): id is string => !!id && ownIds.has(id));
 
   const pipe = redis.pipeline();
-  pipe.zadd(`live:${store.id}`, { score: Date.now(), member: sid });
+  pipe.zadd(`live:${store.id}`, { score: Date.now(), member: vid });
   pipe.zremrangebyscore(`live:${store.id}`, 0, Date.now() - 5 * 60_000);
   pipe.expire(`live:${store.id}`, 600);
   for (const pid of viewed) pipe.incr(`pv:${store.id}:${pid}`);
@@ -107,5 +113,7 @@ export async function POST(req: Request) {
     }
   }
 
-  return NextResponse.json({ ok: true });
+  const res = NextResponse.json({ ok: true });
+  if (visitor.setCookie) res.headers.append("Set-Cookie", visitor.setCookie);
+  return res;
 }

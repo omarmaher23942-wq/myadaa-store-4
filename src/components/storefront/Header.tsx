@@ -16,6 +16,7 @@ import {
   X,
   MessageCircle,
   User,
+  Package,
 } from "lucide-react";
 import { useCart } from "@/store/cart";
 import { hrefFor } from "@/lib/links";
@@ -50,6 +51,18 @@ export function Header({
   const [menu, setMenu] = useState(false);
   const [search, setSearch] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  // «طلباتي»: طلبات هذا الجهاز محفوظة بلا حساب؛ تظهر الأيقونة متى وُجد طلب، وبشارة للطلبات الجارية.
+  const [myOrders, setMyOrders] = useState<{ total: number; active: number }>({ total: 0, active: 0 });
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/storefront/my-orders", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j: { total?: number; active?: number } | null) => alive && j && setMyOrders({ total: Number(j.total) || 0, active: Number(j.active) || 0 }))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 12);
@@ -206,6 +219,20 @@ export function Header({
               <Search className="size-4.5" strokeWidth={SW} aria-hidden="true" />
             </button>
 
+            {myOrders.total > 0 ? (
+              <Link
+                href="/track"
+                className="relative grid size-10 place-items-center rounded-xl opacity-80 transition-opacity hover:opacity-100"
+                aria-label={myOrders.active ? `طلباتي (${myOrders.active} جارية)` : "طلباتي"}
+                title="طلباتي"
+              >
+                <Package className="size-4.5" strokeWidth={SW} aria-hidden="true" />
+                {myOrders.active ? (
+                  <span className="absolute end-1.5 top-1.5 size-2.5 rounded-full ring-2 ring-[var(--background)]" style={{ background: "var(--primary)" }} aria-hidden="true" />
+                ) : null}
+              </Link>
+            ) : null}
+
             {CUSTOMER_ACCOUNTS ? (
 <Link
               href={customer ? "/account" : "/account/login"}
@@ -357,6 +384,20 @@ export function Header({
                 </span>
               </Link>
 ) : null}
+
+              <Link
+                href="/track"
+                onClick={() => setMenu(false)}
+                className="mb-2 flex items-center gap-2 rounded-xl px-3 py-3 text-xs font-black transition-colors hover:bg-[var(--muted)]"
+              >
+                <Package className="size-4" strokeWidth={SW} aria-hidden="true" />
+                {myOrders.total > 0 ? "طلباتي" : "تتبع طلبك"}
+                {myOrders.active ? (
+                  <span className="ms-auto rounded-full px-2 py-0.5 text-[10px]" style={{ background: "var(--primary)", color: "var(--primary-foreground)" }}>
+                    {myOrders.active} جارية
+                  </span>
+                ) : null}
+              </Link>
 
               <nav className="space-y-1" aria-label="روابط المتجر">
                 {navLinks.map((n) => (

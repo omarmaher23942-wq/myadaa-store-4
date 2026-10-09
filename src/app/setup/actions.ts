@@ -7,7 +7,7 @@ import { allow, clientIp } from "@/lib/ratelimit";
 import { getTheStore, startOwnerSession } from "@/server/auth";
 import { ensureSchema, setupStatus, type SetupStatus } from "@/server/setup/status";
 import { beginImport, cancelImport, runImportStep, ImportError, type ImportProgress } from "@/server/setup/importer";
-import { checkUploadThing } from "@/server/provider-check";
+import { checkGroq, checkUploadThing } from "@/server/provider-check";
 
 type Result<T> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -48,6 +48,7 @@ const beginSchema = z
     password: z.string().min(8, "كلمة المرور 8 أحرف على الأقل").max(200),
     confirm: z.string(),
     uploadthingToken: z.string().trim().min(20, "الصق مفتاح UploadThing"),
+    groqKey: z.string().trim().min(10, "الصق مفتاح Groq (مجاني) ليعمل الذكاء الاصطناعي في لوحتك").max(4000),
   })
   .refine((v) => v.password === v.confirm, { message: "كلمتا المرور غير متطابقتين", path: ["confirm"] });
 
@@ -59,10 +60,15 @@ export async function beginImportAction(raw: unknown): Promise<Result<ImportProg
   const status = await setupStatus();
   if (status.phase !== "needs_import") return { ok: false, error: status.phase === "done" ? "متجرك مستلَم بالفعل." : "جهّز قاعدة البيانات أولاً." };
 
-  const ut = await checkUploadThing(parsed.data.uploadthingToken);
+  // نفحص المفتاحين معاً (كل منهما اتصال حي بمزوّده) ونحفظ القيمة النظيفة لا النص الملصوق كما هو.
+  const [ut, groq] = await Promise.all([checkUploadThing(parsed.data.uploadthingToken), checkGroq(parsed.data.groqKey)]);
   if (!ut.ok) return { ok: false, error: ut.error };
+  if (!groq.ok) return { ok: false, error: groq.error };
   try {
-    return { ok: true, data: await beginImport({ ...parsed.data, siteUrl: await siteUrl() }) };
+    return {
+      ok: true,
+      data: await beginImport({ ...parsed.data, uploadthingToken: ut.value, groqKey: groq.value, siteUrl: await siteUrl() }),
+    };
   } catch (e) {
     return { ok: false, error: e instanceof ImportError ? e.message : "تعذّر الاتصال بالمنصة الآن، أعد المحاولة." };
   }

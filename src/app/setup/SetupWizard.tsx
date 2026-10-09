@@ -192,6 +192,7 @@ function ReceiveForm({ platform, onStarted }: { platform: string; onStarted: (p:
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [ut, setUt] = useState("");
+  const [groq, setGroq] = useState("");
 
   useEffect(() => {
     // رابط "افتح صفحة الإعداد" من لوحة Colapia يحمل الكود بعد # فلا يصل لأي سجل خادم.
@@ -209,7 +210,7 @@ function ReceiveForm({ platform, onStarted }: { platform: string; onStarted: (p:
         e.preventDefault();
         start(async () => {
           setError(null);
-          const r = await beginImportAction({ code, email, password, confirm, uploadthingToken: ut });
+          const r = await beginImportAction({ code, email, password, confirm, uploadthingToken: ut, groqKey: groq });
           if (r.ok) onStarted(r.data);
           else setError(r.error);
         });
@@ -244,7 +245,7 @@ function ReceiveForm({ platform, onStarted }: { platform: string; onStarted: (p:
 
       <Field
         label="مفتاح UploadThing (لصور متجرك)"
-        hint="مجاني. ننقل إليه كل صور متجرك، وكل صورة ترفعها بعد ذلك تذهب لحسابك."
+        hint="مجاني. ننقل إليه كل صور متجرك، وكل صورة ترفعها بعد ذلك تذهب لحسابك. الصقه كما نسخته، بالاسم أو بدونه."
       >
         <textarea value={ut} onChange={(e) => setUt(e.target.value)} dir="ltr" rows={2} spellCheck={false} placeholder="UPLOADTHING_TOKEN" className={`${inputCls} resize-none font-mono text-[12px]`} required />
       </Field>
@@ -259,9 +260,26 @@ function ReceiveForm({ platform, onStarted }: { platform: string; onStarted: (p:
         link={{ href: "https://uploadthing.com/dashboard", label: "افتح UploadThing" }}
       />
 
+      <Field
+        label="مفتاح Groq (للذكاء الاصطناعي في لوحتك)"
+        hint="مجاني. به يكتب لك الذكاء الاصطناعي أوصاف المنتجات والردود والعروض داخل لوحتك، على حسابك أنت."
+      >
+        <input value={groq} onChange={(e) => setGroq(e.target.value)} dir="ltr" spellCheck={false} autoComplete="off" placeholder="gsk_..." className={`${inputCls} font-mono text-[12px]`} required />
+      </Field>
+      <Guide
+        title="إزاي أجيب مفتاح Groq من الموبايل؟"
+        steps={[
+          <>افتح <b>console.groq.com</b> وادخل بحساب Google أو GitHub.</>,
+          <>من القائمة افتح <b>API Keys</b> واضغط <b>Create API Key</b>.</>,
+          <>اكتب أي اسم (مثل اسم متجرك) واضغط <b>Submit</b>.</>,
+          <>انسخ المفتاح الذي يبدأ بـ <b dir="ltr">gsk_</b> فوراً والصقه هنا (لا يظهر مرة أخرى).</>,
+        ]}
+        link={{ href: "https://console.groq.com/keys", label: "افتح Groq" }}
+      />
+
       {error ? <Alert tone="error">{error}</Alert> : null}
       <PrimaryButton pending={pending} type="submit" icon={ArrowLeft}>
-        {pending ? "نتحقق من الكود والمفتاح..." : "ابدأ الاستلام"}
+        {pending ? "نتحقق من الكود والمفتاحين..." : "ابدأ الاستلام"}
       </PrimaryButton>
       <p className="text-center text-[11.5px] text-ink-3">
         الكود من <span dir="ltr">{platform.replace(/^https?:\/\//, "")}</span>

@@ -48,6 +48,11 @@ export function useStore() {
   if (!v) throw new Error("useStore خارج StoreProvider");
   return v;
 }
+
+/** مستوى حركة المتجر لمكوّنات قد تُعرض خارج المتجر (معاينات اللوحة والتسجيل): حيوي افتراضياً. */
+export function useMotionLevel(): "calm" | "lively" | "cinematic" {
+  return useContext(Ctx)?.design?.motion?.level ?? "lively";
+}
 /** نص واجهة بصوت المتجر: const t = useCopy(); t("addToCart"). */
 export function useCopy() {
   const { copy } = useStore();

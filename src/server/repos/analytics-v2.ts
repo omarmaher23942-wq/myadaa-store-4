@@ -9,10 +9,10 @@ export async function getConversionFunnelV2(storeId: string, days: number) {
 
   const [events] = await db
     .select({
-      visits: sql<number>`count(*) filter (where name='page_view')`.mapWith(Number),
-      productViews: sql<number>`count(*) filter (where name='product_view')`.mapWith(Number),
-      atc: sql<number>`count(*) filter (where name='add_to_cart')`.mapWith(Number),
-      checkoutStarted: sql<number>`count(*) filter (where name='begin_checkout')`.mapWith(Number),
+      visits: sql<number>`count(distinct (visitor_id || ':' || to_char(created_at at time zone 'Africa/Cairo','YYYY-MM-DD'))) filter (where name='page_view')`.mapWith(Number),
+      productViews: sql<number>`count(distinct visitor_id) filter (where name='product_view')`.mapWith(Number),
+      atc: sql<number>`count(distinct visitor_id) filter (where name='add_to_cart')`.mapWith(Number),
+      checkoutStarted: sql<number>`count(distinct visitor_id) filter (where name='begin_checkout')`.mapWith(Number),
     })
     .from(analyticsEvents)
     .where(and(eq(analyticsEvents.storeId, storeId), gte(analyticsEvents.createdAt, since)));

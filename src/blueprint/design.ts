@@ -190,6 +190,49 @@ function rhythmRules(d: Design, S: string): string {
 }
 
 /** متغيرات وقواعد التصميم + جلد الذكاء الاصطناعي، كلها محصورة في نطاق المتجر. */
+/**
+ * نظام الحركة: CSS فقط (لا يختفي أي نص لو تأخر الجافاسكربت). المستوى والعمق يأتيان من data-motion
+ * وdata-depth على غلاف المتجر، والحركة كلها تتوقف لمن طلب تقليل الحركة من جهازه.
+ */
+function motionRules(S: string): string {
+  const C = `${S}[data-motion="cinematic"]`;
+  const L = `${S}:is([data-motion="cinematic"],[data-motion="lively"])`;
+  const D = `${S}[data-depth="on"]`;
+  return [
+    // عنوان يتكشف كلمة كلمة (سينمائي).
+    `@keyframes s-word{from{opacity:0;transform:translateY(.55em) rotate(1.5deg);filter:blur(10px)}to{opacity:1;transform:none;filter:blur(0)}}`,
+    `${C} .s-kinetic .s-w{display:inline-block;animation:s-word .95s var(--motion-ease) both;animation-delay:calc(var(--i,0) * 70ms + 120ms)}`,
+    `${S}:not([data-motion="cinematic"]) .s-kinetic .s-w{display:inline}`,
+    // صورة الواجهة تتنفس ببطء، وصورة طافية تسبح في مكانها.
+    `@keyframes s-kenburns{from{transform:scale(1.14)}to{transform:scale(1)}}`,
+    `${C} .s-hero[data-layout="fullscreen"] img{animation:s-kenburns 16s cubic-bezier(.2,.6,.3,1) both}`,
+    `@keyframes s-float{from{transform:translate3d(0,0,0) rotate(-1.5deg)}to{transform:translate3d(0,-14px,0) rotate(1.5deg)}}`,
+    `${C} .s-float{animation:s-float 6.5s ease-in-out infinite alternate}`,
+    // ظهور متتابع لعناصر الواجهة الثانوية (حيوي وسينمائي).
+    `${L} .s-hero .s-rise{animation:none}${L} .s-hero .s-copy>*:not(.s-kinetic){animation:s-rise .8s var(--motion-ease) both}`,
+    `${L} .s-hero .s-copy>*:nth-child(2){animation-delay:.14s}${L} .s-hero .s-copy>*:nth-child(3){animation-delay:.32s}${L} .s-hero .s-copy>*:nth-child(4){animation-delay:.46s}`,
+    `${S}[data-motion="lively"] .s-hero .s-copy>.s-kinetic{animation:s-rise .8s var(--motion-ease) .06s both}`,
+    // عمق مع التمرير (المتصفحات الداعمة فقط؛ غيرها يرى صورة ثابتة).
+    `@keyframes s-parallax{from{transform:translate3d(0,-5%,0) scale(1.12)}to{transform:translate3d(0,5%,0) scale(1.12)}}`,
+    `@supports (animation-timeline: view()){${D} .s-parallax{animation:s-parallax linear both;animation-timeline:view();animation-range:cover}}`,
+    // شريط تقدم القراءة بلون المتجر.
+    `@keyframes s-progress{from{transform:scaleX(0)}to{transform:scaleX(1)}}`,
+    `${S} .s-progress{display:none}`,
+    `@supports (animation-timeline: scroll()){${L} .s-progress{display:block;position:fixed;inset-inline:0;top:0;height:3px;z-index:60;background:linear-gradient(90deg,var(--accent),var(--primary));transform-origin:right;animation:s-progress linear both;animation-timeline:scroll(root)}}`,
+    // ميل ثلاثي الأبعاد مع المؤشر ولمعة تتبعه (المتغيرات يكتبها DepthController).
+    `@media (hover:hover) and (pointer:fine){${D} [data-tilt]{transform:perspective(1100px) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg)) translateY(var(--tilt-lift,0px));transition:transform .6s var(--motion-ease);will-change:transform}${D} .s-card[data-tilt]:hover{--tilt-lift:-5px}` +
+      `${D} [data-tilt].is-tilting{transition:transform .08s linear}` +
+      `${D} [data-tilt]::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:2;background:radial-gradient(520px circle at var(--gx,50%) var(--gy,50%),rgb(255 255 255/.24),transparent 45%);opacity:var(--go,0);transition:opacity .45s}}`,
+    // واجهة «المدار»: صور المنتجات تدور في حلقة ثلاثية الأبعاد.
+    `@keyframes s-orbit{from{transform:rotateX(-10deg) rotateY(0)}to{transform:rotateX(-10deg) rotateY(-360deg)}}`,
+    `${S} .s-orbit{perspective:1400px}${S} .s-orbit-ring{position:relative;transform-style:preserve-3d;animation:s-orbit 38s linear infinite}`,
+    `${S} .s-orbit:hover .s-orbit-ring{animation-play-state:paused}`,
+    `${S} .s-orbit-item{position:absolute;inset:0;margin:auto;transform:rotateY(calc(var(--i) * 360deg / var(--n))) translateZ(var(--rz))}`,
+    `${S} .s-orbit::after{content:"";position:absolute;inset:auto 15% 4% 15%;height:18%;border-radius:50%;background:radial-gradient(closest-side,color-mix(in srgb,var(--foreground) 22%,transparent),transparent);filter:blur(6px);z-index:-1}`,
+    `@media (prefers-reduced-motion:reduce){${S} .s-orbit-ring{animation:none}${S} .s-kinetic .s-w{animation:none!important;opacity:1!important;filter:none!important;transform:none!important}${S} [data-tilt]{transform:none!important}${S} .s-parallax{animation:none!important;transform:none!important}}`,
+  ].join("");
+}
+
 export function designStyleSheet(bp: Pick<StoreBlueprint, "design" | "customCss" | "theme">, S = ".storefront"): string {
   const parsed = designSchema.safeParse(bp.design ?? {});
   const d = parsed.success ? parsed.data : designSchema.parse({});
@@ -232,6 +275,7 @@ export function designStyleSheet(bp: Pick<StoreBlueprint, "design" | "customCss"
     cardStyleRules(bp.theme.productCardStyle, S) +
     iconRules(d, S) +
     rhythmRules(d, S) +
+    motionRules(S) +
     `@keyframes s-rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}${S} .s-rise{animation:s-rise .7s var(--motion-ease) both}` +
     `@media (prefers-reduced-motion:reduce){${S} *{transition-duration:0s!important;animation-duration:0s!important}}`;
 

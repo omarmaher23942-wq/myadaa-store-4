@@ -29,15 +29,11 @@ export default async function OrderPage({ params, searchParams }: Props) {
   if (!CODE_RE.test(code)) notFound();
 
   const store = await requireStore(sub);
-  const [bp, cookieAccess] = await Promise.all([getBlueprint(store.id), hasOrderAccess(store.id, code)]);
   const legacyPhone = typeof phone === "string" && phone ? phone : undefined;
-
-  // الوصول: cookie الطلب المباشر بعد الشراء أو برابط التتبع
-  const o = cookieAccess
-    ? await getOrderByCode(store.id, code)
-    : legacyPhone
-    ? await getOrderByCodeAndPhone(store.id, code, legacyPhone)
-    : await getOrderByCode(store.id, code);
+  const [bp, found] = await Promise.all([getBlueprint(store.id), getOrderByCode(store.id, code)]);
+  // الوصول: cookie الطلب بعد الشراء، أو نفس الجهاز الذي طلب منه، أو رقم الموبايل من صفحة التتبع.
+  const cookieAccess = found ? await hasOrderAccess(store.id, code, found.visitorId) : false;
+  const o = cookieAccess ? found : legacyPhone ? await getOrderByCodeAndPhone(store.id, code, legacyPhone) : null;
 
   if (!o) {
     return (
@@ -62,7 +58,7 @@ export default async function OrderPage({ params, searchParams }: Props) {
       <p className="mt-2 text-muted-foreground">رقم طلبك</p>
       <p className="text-3xl font-black tracking-widest text-primary" dir="ltr">{o.code}</p>
       <p className="mt-2 text-sm text-muted-foreground">
-        احتفظ بالرقم لتتبع طلبك. هنتواصل معاك على <span dir="ltr">{prettyPhone(o.customerPhone)}</span> للتأكيد.
+        طلبك محفوظ في «طلباتي» على هذا الجهاز، فلا تحتاج لحفظ الرقم. هنتواصل معاك على <span dir="ltr">{prettyPhone(o.customerPhone)}</span> للتأكيد.
       </p>
 
       {transfer && (
@@ -97,7 +93,7 @@ export default async function OrderPage({ params, searchParams }: Props) {
       </div>
 
       <div className="mt-8 flex justify-center gap-3">
-        <Link href={`/track?code=${encodeURIComponent(o.code)}`} className="btn-brand">تتبع الطلب</Link>
+        <Link href={`/track?code=${encodeURIComponent(o.code)}`} className="btn-brand">تابع حالة طلبك</Link>
         <Link href="/" className="rounded-lg border-2 px-5 py-3 font-semibold">متابعة التسوق</Link>
       </div>
     </div>

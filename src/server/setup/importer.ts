@@ -38,6 +38,9 @@ type ImportState = {
   phase: "media" | "rows" | "verify" | "complete";
   mediaIndex: number;
   media: Record<string, string>;
+  /** صور تعذّر نسخها في الجولة السابقة، تُعاد قبل سحب الصفوف (حتى 3 جولات). */
+  mediaRetry?: string[];
+  mediaRounds?: number;
   /** الجداول المتبقية للسحب (بالترتيب)، والموضع داخل أولها. */
   queue: string[];
   offset: number;
@@ -110,6 +113,7 @@ export async function beginImport(input: {
   email: string;
   password: string;
   uploadthingToken: string;
+  groqKey: string;
 }): Promise<ImportProgress> {
   if (await getSetting<SetupState>("setup")) throw new ImportError("متجرك مستلَم بالفعل.");
   const { status, body } = await platform<Manifest & { error?: string }>(input.code, input.siteUrl, "/api/ownership/export?part=manifest");
@@ -117,7 +121,8 @@ export async function beginImport(input: {
   if (body.format !== SUPPORTED_FORMAT) throw new ImportError("صيغة البيانات أحدث من هذا المشروع. حمّل نسخة محدثة من مشروعك من لوحة Colapia.");
   if (body.store.subdomain !== STORE.subdomain) throw new ImportError("هذا الكود لمتجر آخر غير المتجر الذي وُلّد له هذا المشروع.");
 
-  await setSetting("keys.uploadthing", input.uploadthingToken.trim());
+  await setSetting("keys.uploadthing", input.uploadthingToken);
+  if (input.groqKey) await setSetting("keys.groq", input.groqKey);
   const state: ImportState = {
     code: input.code,
     siteUrl: input.siteUrl,
@@ -147,17 +152,63 @@ export async function cancelImport(): Promise<void> {
 
 // ─── الخطوات ─────────────────────────────────────────────────────────────────
 
+const MEDIA_ROUNDS = 3;
+
+/** هل ما زال الملف موجوداً على المنصة؟ (ملف محذوف أصلاً لا يوقف الاستلام). */
+async function stillOnPlatform(url: string): Promise<boolean> {
+  try {
+    const r = await fetch(url, { method: "HEAD", cache: "no-store", signal: AbortSignal.timeout(8_000) });
+    return r.status !== 404 && r.status !== 410;
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * ينسخ الصور إلى حسابك على UploadThing. أي صورة يتعذّر نسخها تُعاد في جولات لاحقة، ولا يكتمل الاستلام
+ * وصورة موجودة لم تُنسخ بعد: المنصة تحذف نسختها فور الاستلام، فلا بد أن تكون كل الصور في حسابك أولاً.
+ */
 async function copyMedia(s: ImportState, token: string) {
   const ut = new UTApi({ token });
-  const batch = s.manifest.media.slice(s.mediaIndex, s.mediaIndex + MEDIA_BATCH);
-  const results = await ut.uploadFilesFromUrl(batch);
+  const retrying = s.mediaIndex >= s.manifest.media.length;
+  const source = retrying ? s.mediaRetry ?? [] : s.manifest.media;
+  const start = retrying ? 0 : s.mediaIndex;
+  const batch = source.slice(start, start + MEDIA_BATCH);
+  const results = await ut.uploadFilesFromUrl(batch).catch(() => batch.map(() => ({ data: null })));
+  const failed: string[] = [];
   results.forEach((r, i) => {
     const from = batch[i]!;
-    // ملف لم يعد موجوداً على المنصة يبقى برابطه كما هو بدل إيقاف الاستلام.
-    s.media[from] = r.data?.ufsUrl ?? from;
+    const to = (r as { data?: { ufsUrl?: string } | null }).data?.ufsUrl;
+    if (to) s.media[from] = to;
+    else failed.push(from);
   });
-  s.mediaIndex += batch.length;
-  if (s.mediaIndex >= s.manifest.media.length) s.phase = "rows";
+  if (retrying) {
+    s.mediaRetry = [...(s.mediaRetry ?? []).slice(batch.length), ...failed];
+  } else {
+    s.mediaIndex += batch.length;
+    s.mediaRetry = [...(s.mediaRetry ?? []), ...failed];
+  }
+  const passDone = retrying ? (s.mediaRetry ?? []).length === failed.length : s.mediaIndex >= s.manifest.media.length;
+  if (!passDone) return;
+  const pending = s.mediaRetry ?? [];
+  if (!pending.length) {
+    s.phase = "rows";
+    return;
+  }
+  s.mediaRounds = (s.mediaRounds ?? 0) + 1;
+  if (s.mediaRounds < MEDIA_ROUNDS) return;
+  // آخر جولة: الملفات المحذوفة من المنصة أصلاً تبقى بروابطها، والموجودة تمنع الإكمال برسالة واضحة.
+  const alive: string[] = [];
+  for (const url of pending) if (await stillOnPlatform(url)) alive.push(url);
+  for (const url of pending) if (!alive.includes(url)) s.media[url] = url;
+  if (alive.length) {
+    s.mediaRetry = alive;
+    s.mediaRounds = 0;
+    await setSetting("import", s);
+    throw new ImportError(`تعذّر نقل ${alive.length} صورة إلى حسابك على UploadThing. تأكد أن المفتاح صحيح وأن مساحتك تكفي، ثم اضغط «أكمل الاستلام».`);
+  }
+  s.mediaRetry = [];
+  s.phase = "rows";
 }
 
 async function importPage(s: ImportState) {

@@ -4,6 +4,14 @@ type Entry = { v: unknown; exp: number };
 const store = new Map<string, Entry>();
 const MAX_KEYS = 5_000;
 
+/**
+ * مفاتيح الكاش (المتجر والـ Blueprint والصفحة الرئيسية...) تعيش ثواني قليلة فقط: Vercel يشغّل أكثر من نسخة
+ * من الخادم، وكل نسخة لها ذاكرتها، فلا تستطيع نسخة أن تمسح كاش أخرى بعد حفظ تعديل. بمدة قصيرة يظهر أي تعديل
+ * في كل مكان خلال ثوانٍ. أما مفاتيح الحماية (منع تكرار الطلب وحدود المحاولات) فتبقى بمدتها الكاملة.
+ */
+const CACHE_KEY = /^(store:|sf:|rec:)/;
+const CACHE_MAX_MS = 15_000;
+
 function live(key: string): Entry | undefined {
   const e = store.get(key);
   if (!e) return undefined;
@@ -80,7 +88,8 @@ export const redis = {
   async set(key: string, value: unknown, opts?: { ex?: number; px?: number; nx?: boolean }): Promise<"OK" | null> {
     if (opts?.nx && live(key)) return null;
     if (store.size >= MAX_KEYS) store.delete(store.keys().next().value as string);
-    const ttl = opts?.ex ? opts.ex * 1000 : opts?.px ?? 0;
+    let ttl = opts?.ex ? opts.ex * 1000 : opts?.px ?? 0;
+    if (CACHE_KEY.test(key)) ttl = Math.min(ttl || CACHE_MAX_MS, CACHE_MAX_MS);
     store.set(key, { v: clone(value), exp: ttl ? Date.now() + ttl : 0 });
     return "OK";
   },

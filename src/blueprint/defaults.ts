@@ -228,18 +228,8 @@ export function defaultBlueprint(input: {
     inspectionAllowed: inspection,
   });
 
-  const productTrustRow = inspection
-    ? [
-        { icon: "banknote", text: "الدفع عند الاستلام" },
-        { icon: INSPECTION_TRUST.icon, text: INSPECTION_TRUST.text },
-        { icon: "truck", text: "شحن لكل محافظات مصر" },
-        { icon: "rotate-ccw", text: "استبدال سهل" },
-      ]
-    : [
-        { icon: "banknote", text: "الدفع عند الاستلام" },
-        { icon: "truck", text: "شحن لكل محافظات مصر" },
-        { icon: "rotate-ccw", text: "استبدال سهل" },
-      ];
+  // صف الثقة في صفحة المنتج يُبنى عند العرض من حقائق المتجر الفعلية (blueprint/facts.ts)، لا من هنا.
+  const productTrustRow: { icon: string; text: string }[] = [];
 
   const faqItems = buildDynamicFaqItems({
     inspectionAllowed: inspection,
@@ -330,7 +320,7 @@ export function defaultBlueprint(input: {
     },
     footer: {
       variant: "rich",
-      tagline: "شكراً إنك اخترتنا. بنشحن لكل محافظات مصر.",
+      tagline: "",
       showPaymentIcons: true,
       showChannels: true,
       showPoweredBy: true,

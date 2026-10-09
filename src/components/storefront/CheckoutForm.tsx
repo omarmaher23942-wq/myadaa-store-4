@@ -461,6 +461,27 @@ export function CheckoutForm({
                 {fieldError("phone")}
               </div>
 
+              <div className="sm:col-span-2">
+                <label htmlFor="co-email" className="mb-1 block text-xs font-bold">
+                  بريدك <span className="font-medium opacity-60">(اختياري: نبلغك عليه بكل خطوة في طلبك)</span>
+                </label>
+                <input
+                  id="co-email"
+                  type="email"
+                  className={cn(F, "font-mono")}
+                  style={inputStyle}
+                  placeholder="name@example.com"
+                  autoComplete="email"
+                  inputMode="email"
+                  dir="ltr"
+                  value={f.email}
+                  onChange={(e) => set("email", e.target.value.trim())}
+                  maxLength={120}
+                  aria-invalid={!!(err?.field === "email")}
+                />
+                {fieldError("email")}
+              </div>
+
               <div>
                 <label htmlFor="co-gov" className="mb-1 block text-xs font-bold">المحافظة *</label>
                 <div className="relative">

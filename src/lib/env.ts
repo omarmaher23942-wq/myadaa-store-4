@@ -2,6 +2,8 @@
 // عند ربط قاعدة Neon من تبويب Storage. مفاتيح UploadThing وGroq وResend تُحفظ في قاعدتك من
 // لوحة التحكم (الربط والمفاتيح)، أو في متغيرات البيئة إن فضّلت.
 
+import { createHash } from "node:crypto";
+
 const isPostgres = (v: string | undefined): v is string => typeof v === "string" && /^postgres(ql)?:\/\//i.test(v.trim());
 
 /**
@@ -27,12 +29,23 @@ function host(): string {
   return process.env.NEXT_PUBLIC_VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL || "localhost:3000";
 }
 
+/**
+ * سر توقيع الكوكيز (صلاحية صفحة الطلب للعميل وغيرها). لا يحتاج متجرك لكتابته: يُشتق ثابتاً من رابط قاعدتك
+ * (وهو سري أصلاً)، فيبقى واحداً في كل نسخ الخادم. ويمكن تحديده صراحة بـ AUTH_SECRET إن أردت.
+ */
+function authSecret(): string {
+  const explicit = process.env.AUTH_SECRET?.trim();
+  if (explicit && explicit.length >= 32) return explicit;
+  return createHash("sha256").update(`colapia-store-auth:${DATABASE_URL || "local-dev"}`).digest("base64url");
+}
+
 const HOST = host();
 const ORIGIN = `${HOST.startsWith("localhost") ? "http" : "https"}://${HOST}`;
 
 type Env = {
   NODE_ENV: "development" | "test" | "production";
   DATABASE_URL: string;
+  AUTH_SECRET: string;
   ROOT_DOMAIN: string;
   RESEND_API_KEY: string;
   EMAIL_FROM: string;
@@ -46,6 +59,7 @@ type Env = {
 export const env: Env = {
   NODE_ENV: (process.env.NODE_ENV as Env["NODE_ENV"]) ?? "production",
   DATABASE_URL,
+  AUTH_SECRET: authSecret(),
   ROOT_DOMAIN: HOST,
   RESEND_API_KEY: process.env.RESEND_API_KEY ?? "",
   EMAIL_FROM: process.env.EMAIL_FROM ?? "",

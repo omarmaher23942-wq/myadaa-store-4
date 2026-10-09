@@ -31,7 +31,11 @@ export async function recoverAction(raw: unknown): Promise<Result> {
     .safeParse(raw);
   if (!p.success) return { ok: false, error: p.error.issues[0]?.message ?? "راجع البيانات" };
   const stored = await getSetting<string>("owner.recovery");
-  if (!stored || stored !== (await sha256(p.data.code.toUpperCase()))) return { ok: false, error: "كود الاسترجاع غير صحيح" };
+  const byRecoveryCode = Boolean(stored) && stored === (await sha256(p.data.code.toUpperCase()));
+  // طوارئ: إن ضاع كود الاسترجاع، صاحب حساب Vercel وحده يستطيع وضع OWNER_RESET_CODE في متغيرات المشروع.
+  const emergency = process.env.OWNER_RESET_CODE?.trim() ?? "";
+  const byVercel = emergency.length >= 12 && p.data.code.trim() === emergency;
+  if (!byRecoveryCode && !byVercel) return { ok: false, error: "كود الاسترجاع غير صحيح" };
   const store = await getTheStore();
   if (!store) return { ok: false, error: "المتجر غير مُعد بعد" };
   const [m] = await db.select({ id: merchants.id }).from(merchants).where(eq(merchants.id, store.merchantId)).limit(1);

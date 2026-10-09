@@ -239,28 +239,40 @@ export async function saveProductAction(raw: unknown) {
   }
 
 
-  // مزامنة المتغيرات (Variants Synchronization)
+  // مزامنة المتغيرات: كل تركيبة موجودة تُحدَّث بمعرّفها (فلا تنكسر سلات العملاء ولا روابط الطلبات القديمة)،
+  // والجديدة تُضاف، والمحذوفة تُحذف. الكل في دفعة واحدة ذرية.
   if (productId) {
-    await db
-      .delete(productVariants)
+    const existing = await db
+      .select({ id: productVariants.id, optionValues: productVariants.optionValues })
+      .from(productVariants)
       .where(and(eq(productVariants.productId, productId), eq(productVariants.storeId, s.storeId)));
-
-    if (hasVariants) {
-      await db.insert(productVariants).values(
-        d.variants.map((v) => ({
-          storeId: s.storeId,
-          productId: productId!,
-          optionValues: v.optionValues,
-          pricePiasters: v.price ?? d.price,
-          compareAtPiasters: v.compareAt ?? d.compareAt ?? null,
-          stock: v.stock ?? 0,
-          sku: v.sku ?? null,
-          imageUrl: v.imageUrl ?? null,
-          imageUrls: v.imageUrls,
-          isAvailable: v.isAvailable,
-        }))
-      );
-    }
+    const byId = new Set(existing.map((e) => e.id));
+    const byKey = new Map(existing.map((e) => [e.optionValues.join("\u0001"), e.id]));
+    const rows = d.variants.map((v) => ({
+      id: v.id && byId.has(v.id) ? v.id : byKey.get(v.optionValues.join("\u0001")),
+      values: {
+        storeId: s.storeId,
+        productId: productId!,
+        optionValues: v.optionValues,
+        pricePiasters: v.price ?? d.price,
+        compareAtPiasters: v.compareAt ?? d.compareAt ?? null,
+        stock: v.stock ?? 0,
+        sku: v.sku ?? null,
+        imageUrl: v.imageUrl ?? null,
+        imageUrls: v.imageUrls,
+        isAvailable: v.isAvailable,
+      },
+    }));
+    const keep = new Set(rows.map((r) => r.id).filter((x): x is string => Boolean(x)));
+    const removed = existing.filter((e) => !keep.has(e.id)).map((e) => e.id);
+    const ops = [
+      ...(removed.length ? [db.delete(productVariants).where(and(eq(productVariants.storeId, s.storeId), inArray(productVariants.id, removed)))] : []),
+      ...rows
+        .filter((r) => r.id)
+        .map((r) => db.update(productVariants).set(r.values).where(and(eq(productVariants.id, r.id!), eq(productVariants.storeId, s.storeId)))),
+      ...(rows.some((r) => !r.id) ? [db.insert(productVariants).values(rows.filter((r) => !r.id).map((r) => r.values))] : []),
+    ];
+    if (ops.length) await db.batch(ops as never);
   }
 
   await invalidateStoreCache(s.store);

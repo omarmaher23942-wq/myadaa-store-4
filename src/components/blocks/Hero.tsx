@@ -2,8 +2,11 @@
 //   split: نص وصورة جنباً إلى جنب مع صورة ثانية طافية | editorial: عنوان كبير ثم شريط صور عريض
 //   collage: نص مع مجموعة صور متداخلة | product_spotlight: منتج بطل بسعره وزر شرائه
 //   centered: هوية نصية قوية بخلفية ضوئية من ألوان المتجر | fullscreen: صورة كاملة بنص فوقها
-// بلا حركة ظهور تعتمد على JavaScript: الواجهة أول ما يراه العميل ويجب أن تظهر فوراً (حركة CSS خفيفة فقط).
+//   orbit: صور المنتجات تدور في حلقة ثلاثية الأبعاد
+// الحركة كلها CSS (blueprint/design.ts): العنوان يتكشف كلمة كلمة في المستوى السينمائي، والصور تميل مع
+// المؤشر وتتحرك بعمق مع التمرير. لا شيء يعتمد على JavaScript ليظهر، فالواجهة تظهر فوراً دائماً.
 // كل النصوص من الذكاء الاصطناعي، وكل الشكل من تصميم المتجر (الخطافات .s-hero و.s-display و.s-btn...).
+import { Fragment } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
@@ -14,13 +17,13 @@ import type { HeroSection } from "@/blueprint/schema";
 
 export type HeroSpotlight = { slug: string; name: string; pricePiasters: number; compareAtPiasters: number | null; image?: string } | null;
 
-type Layout = "split" | "editorial" | "collage" | "product_spotlight" | "centered" | "fullscreen";
+type Layout = "split" | "editorial" | "collage" | "product_spotlight" | "centered" | "fullscreen" | "orbit";
 
 function layoutOf(s: HeroSection, spotlight: HeroSpotlight): Layout {
   const imgs = s.images.length;
   const v = s.variant;
   const want: Layout =
-    v === "editorial" || v === "collage" || v === "split" || v === "centered" || v === "fullscreen" || v === "product_spotlight"
+    v === "editorial" || v === "collage" || v === "split" || v === "centered" || v === "fullscreen" || v === "product_spotlight" || v === "orbit"
       ? v
       : v === "cinematic" || v === "video"
         ? "fullscreen"
@@ -30,6 +33,7 @@ function layoutOf(s: HeroSection, spotlight: HeroSpotlight): Layout {
   // لا تخطيط يعتمد على صور غير موجودة.
   if (want === "product_spotlight" && !spotlight?.image) return imgs ? "split" : "centered";
   if (want === "collage" && imgs < 3) return imgs ? "split" : "centered";
+  if (want === "orbit" && imgs < 4) return imgs >= 3 ? "collage" : imgs ? "split" : "centered";
   if ((want === "split" || want === "editorial" || want === "fullscreen") && !imgs) return "centered";
   return want;
 }
@@ -53,11 +57,31 @@ function Ctas({ s, light }: { s: HeroSection; light?: boolean }) {
   );
 }
 
+/** العنوان مقسوماً لكلمات: في المستوى السينمائي تتكشف كلمة كلمة، وفي غيره يُقرأ كنص عادي. */
+function Kinetic({ text }: { text: string }) {
+  const words = text.split(/\s+/).filter(Boolean);
+  return (
+    <>
+      {words.map((w, i) => (
+        // المسافة خارج الكلمة: المسافة في آخر عنصر inline-block تختفي فتلتصق الكلمات.
+        <Fragment key={i}>
+          <span className="s-w" style={{ ["--i" as string]: i }}>
+            {w}
+          </span>
+          {i < words.length - 1 ? " " : null}
+        </Fragment>
+      ))}
+    </>
+  );
+}
+
 function Copy({ s, center, light, size = "lg" }: { s: HeroSection; center?: boolean; light?: boolean; size?: "lg" | "xl" }) {
   return (
-    <div className={cn("flex flex-col gap-4", center && "items-center text-center")}>
+    <div className={cn("s-copy flex flex-col gap-4", center && "items-center text-center")}>
       {s.eyebrow ? <span className={cn("s-eyebrow", light && "!text-white/90")}>{s.eyebrow}</span> : null}
-      <h1 className={cn("s-display font-heading", size === "xl" && "lg:!text-[5rem]", light && "!text-white")}>{s.headline}</h1>
+      <h1 className={cn("s-display s-kinetic font-heading", size === "xl" && "lg:!text-[5rem]", light && "!text-white")}>
+        <Kinetic text={s.headline} />
+      </h1>
       {s.subheadline ? <p className={cn("s-sub max-w-xl !text-base sm:!text-lg", center && "mx-auto", light && "!text-white !opacity-90")}>{s.subheadline}</p> : null}
       <div className={cn(center && "flex justify-center")}>
         <Ctas s={s} light={light} />
@@ -107,9 +131,11 @@ export function Hero({ s, spotlight = null }: { s: HeroSection; spotlight?: Hero
       <section className="s-hero" data-layout="editorial">
         <div className="container-x pb-8 pt-[clamp(3rem,7vw,6rem)] s-rise">
           <div className="grid items-end gap-6 lg:grid-cols-[1.4fr_1fr]">
-            <div className="flex flex-col gap-4">
+            <div className="s-copy flex flex-col gap-4">
               {s.eyebrow ? <span className="s-eyebrow">{s.eyebrow}</span> : null}
-              <h1 className="s-display font-heading lg:!text-[5.2rem]">{s.headline}</h1>
+              <h1 className="s-display s-kinetic font-heading lg:!text-[5.2rem]">
+                <Kinetic text={s.headline} />
+              </h1>
             </div>
             <div className="flex flex-col gap-4 lg:pb-3">
               {s.subheadline ? <p className="s-sub !text-base">{s.subheadline}</p> : null}
@@ -120,8 +146,8 @@ export function Hero({ s, spotlight = null }: { s: HeroSection; spotlight?: Hero
         <div className="container-x pb-[clamp(2rem,5vw,4rem)]">
           <div className={cn("grid gap-3 sm:gap-4", strip.length === 1 ? "grid-cols-1" : strip.length === 2 ? "grid-cols-2" : "grid-cols-2 md:grid-cols-[1.6fr_1fr_1fr]")}>
             {strip.map((im, i) => (
-              <div key={i} className={cn("s-hero-media s-media relative !p-0", strip.length === 3 && i === 0 ? "col-span-2 !aspect-[16/10] md:col-span-1 md:!aspect-auto md:h-[26rem]" : "!aspect-[4/5] md:!aspect-auto md:h-[26rem]")}>
-                <Image src={im.url} alt={im.alt || ""} fill priority={i === 0} sizes="(max-width: 768px) 100vw, 40vw" className="!absolute object-cover" style={{ objectPosition: pos(i) }} />
+              <div key={i} data-tilt className={cn("s-hero-media s-media relative !p-0", strip.length === 3 && i === 0 ? "col-span-2 !aspect-[16/10] md:col-span-1 md:!aspect-auto md:h-[26rem]" : "!aspect-[4/5] md:!aspect-auto md:h-[26rem]")}>
+                <Image src={im.url} alt={im.alt || ""} fill priority={i === 0} sizes="(max-width: 768px) 100vw, 40vw" className="s-parallax !absolute object-cover" style={{ objectPosition: pos(i) }} />
               </div>
             ))}
           </div>
@@ -140,10 +166,36 @@ export function Hero({ s, spotlight = null }: { s: HeroSection; spotlight?: Hero
           </div>
           <div className="grid grid-cols-2 gap-3 sm:gap-4">
             {c.map((im, i) => (
-              <div key={i} className={cn("s-hero-media s-media relative !p-0", i % 2 === 1 ? "translate-y-6 sm:translate-y-10" : "", i === 0 || i === 3 ? "!aspect-[4/5]" : "!aspect-square")}>
+              <div key={i} data-tilt className={cn("s-hero-media s-media relative !p-0", i % 2 === 1 ? "translate-y-6 sm:translate-y-10" : "", i === 0 || i === 3 ? "!aspect-[4/5]" : "!aspect-square")}>
                 <Image src={im.url} alt={im.alt || ""} fill priority={i < 2} sizes="(max-width: 1024px) 50vw, 25vw" className="!absolute object-cover" style={{ objectPosition: pos(i) }} />
               </div>
             ))}
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  if (layout === "orbit") {
+    const ring = imgs.slice(0, 8);
+    const n = ring.length;
+    const w = 180;
+    const rz = Math.round(w / 2 / Math.tan(Math.PI / n) + 80);
+    return (
+      <section className="s-hero relative isolate overflow-hidden" data-layout="orbit">
+        <div aria-hidden="true" className="absolute inset-0 -z-10" style={{ background: "radial-gradient(60% 50% at 50% 60%, color-mix(in srgb, var(--primary) 14%, transparent), transparent 70%)" }} />
+        <div className="container-x grid items-center gap-6 py-[clamp(3rem,7vw,6rem)] lg:grid-cols-[1fr_1.1fr]">
+          <div className="s-rise">
+            <Copy s={s} />
+          </div>
+          <div className="s-orbit relative mx-auto grid h-[320px] w-full place-items-center sm:h-[440px]" aria-hidden="true">
+            <div className="s-orbit-ring h-[230px] w-[180px] scale-[.66] sm:scale-100" style={{ ["--n" as string]: n, ["--rz" as string]: `${rz}px` }}>
+              {ring.map((im, i) => (
+                <div key={i} className="s-orbit-item s-hero-media s-media !aspect-auto h-[230px] w-[180px] !p-0 shadow-xl" style={{ ["--i" as string]: i }}>
+                  <Image src={im.url} alt="" fill sizes="180px" priority={i < 3} className="!absolute object-cover" style={{ objectPosition: pos(i) }} />
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </section>
@@ -160,7 +212,7 @@ export function Hero({ s, spotlight = null }: { s: HeroSection; spotlight?: Hero
             <Copy s={s} />
           </div>
           <Link href={href} className="group relative mx-auto block w-full max-w-md">
-            <div className="s-hero-media s-media relative !aspect-[4/5]">
+            <div data-tilt className="s-hero-media s-media relative !aspect-[4/5]">
               <Image src={spotlight.image!} alt={spotlight.name} fill priority sizes="(max-width: 768px) 90vw, 40vw" className="!static object-cover" />
             </div>
             <div className="s-card absolute -bottom-5 start-4 end-4 flex items-center justify-between gap-3 p-3.5 sm:start-6 sm:end-auto sm:min-w-64">
@@ -186,11 +238,11 @@ export function Hero({ s, spotlight = null }: { s: HeroSection; spotlight?: Hero
           <Copy s={s} />
         </div>
         <div className="relative order-1 md:order-2">
-          <div className="s-hero-media s-media relative !aspect-[4/5] !p-0 sm:!aspect-[5/6]">
-            <Image src={imgs[0]!.url} alt={imgs[0]!.alt || s.headline} fill priority sizes="(max-width: 768px) 100vw, 50vw" className="!absolute object-cover" style={{ objectPosition: pos(0) }} />
+          <div data-tilt className="s-hero-media s-media relative !aspect-[4/5] !p-0 sm:!aspect-[5/6]">
+            <Image src={imgs[0]!.url} alt={imgs[0]!.alt || s.headline} fill priority sizes="(max-width: 768px) 100vw, 50vw" className="s-parallax !absolute object-cover" style={{ objectPosition: pos(0) }} />
           </div>
           {imgs[1] ? (
-            <div className="s-hero-media s-media absolute -bottom-6 -start-4 hidden w-40 !aspect-square !p-0 shadow-2xl ring-4 ring-[var(--background)] sm:block lg:w-52">
+            <div className="s-hero-media s-media s-float absolute -bottom-6 -start-4 hidden w-40 !aspect-square !p-0 shadow-2xl ring-4 ring-[var(--background)] sm:block lg:w-52">
               <Image src={imgs[1].url} alt={imgs[1].alt || ""} fill sizes="13rem" className="!absolute object-cover" style={{ objectPosition: pos(1) }} />
             </div>
           ) : null}

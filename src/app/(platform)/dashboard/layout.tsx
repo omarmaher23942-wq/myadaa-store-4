@@ -63,6 +63,19 @@ export default async function DashboardLayout({
     if (!path.startsWith("/dashboard/own")) redirect("/dashboard/own");
   }
 
+  // بعد الاستلام تبقى صفحة واحدة فقط بلا قائمة ولا أدوات: روابط موقعه الجديد وطرق استرجاع الدخول.
+  if (EDITION === "platform" && session.store?.ownedAt) {
+    const jar0 = await cookies();
+    const theme0 = jar0.get(DASH_THEME_COOKIE)?.value === "light" ? "light" : "dark";
+    return (
+      <div dir="rtl" className={`dash dash-cosmos min-h-dvh text-ink ${theme0 === "dark" ? "dark" : ""}`}>
+        <main id="dashboard-main" className="min-w-0 p-4 py-10 md:p-10">
+          {children}
+        </main>
+      </div>
+    );
+  }
+
   const trialDaysLeft = session.store
     ? computeTrialDaysLeft(session.store.demoExpiresAt ?? null)
     : null;

@@ -6,6 +6,8 @@ import { storeMetadata, storeViewport } from "@/lib/storefront-seo";
 import { themeStyleSheet } from "@/blueprint/theme";
 import { designStyleSheet } from "@/blueprint/design";
 import { getStoreFacts } from "@/server/repos/facts";
+import { truthfulBlueprint } from "@/blueprint/facts";
+import { DepthController } from "@/components/storefront/DepthController";
 import { StoreProvider } from "@/components/storefront/StoreProvider";
 import { EditorProvider } from "@/editor/EditorProvider";
 import { Header } from "@/components/storefront/Header";
@@ -33,7 +35,8 @@ export async function generateMetadata({
   const { store: sub } = await params;
   const store = await getStoreBySubdomain(sub);
   if (!store) return { robots: { index: false, follow: false } };
-  return storeMetadata(store, await getBlueprintOrNull(store.id));
+  const bp = await getBlueprintOrNull(store.id);
+  return storeMetadata(store, bp ? truthfulBlueprint(bp, await getStoreFacts(store.id, bp)) : null);
 }
 
 export async function generateViewport({
@@ -90,18 +93,20 @@ export default async function StoreLayout({ children, params }: Props) {
   }
 
   // من هنا، status إما review | trial | active
-  const [bp, categories, customerSession] = await Promise.all([
+  const [rawBp, categories, customerSession] = await Promise.all([
     getBlueprintOrNull(store.id),
     listVisibleCategories(store.id),
     getCustomerSession(store.id),
   ]);
 
   // دفاع أخير: لو الـ blueprint غير موجود لأي سبب (بيانات تالفة).
-  if (!bp) {
+  if (!rawBp) {
     notFound();
   }
 
-  const facts = await getStoreFacts(store.id, bp);
+  // النصوص الحرة (الوصف وشعار الفوتر) تُعرض بعد حذف أي ادعاء لم يعد صحيحاً في سياسة المتجر الآن.
+  const facts = await getStoreFacts(store.id, rawBp);
+  const bp = truthfulBlueprint(rawBp, facts);
 
   const customer = customerSession
     ? {
@@ -149,7 +154,11 @@ export default async function StoreLayout({ children, params }: Props) {
           data-button-style={bp.theme.buttonStyle}
           data-card-style={bp.theme.productCardStyle}
           data-theme-mode={bp.theme.mode}
+          data-motion={bp.design.motion.level}
+          data-depth={bp.design.motion.depth ? "on" : "off"}
         >
+          <div className="s-progress" aria-hidden="true" />
+          {bp.design.motion.depth ? <DepthController /> : null}
           <Header
             header={bp.header}
             brand={bp.brand}

@@ -118,6 +118,10 @@
     "header": {
       "surface": "glass",
       "logoSize": "md"
+    },
+    "motion": {
+      "level": "lively",
+      "depth": true
     }
   },
   "copy": {},

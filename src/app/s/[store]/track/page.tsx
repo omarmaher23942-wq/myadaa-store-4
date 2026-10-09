@@ -1,9 +1,12 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
-import { Check } from "lucide-react";
+import Link from "next/link";
+import { Check, ChevronLeft, PackageCheck, Smartphone } from "lucide-react";
 import { requireStore } from "@/lib/tenant";
-import { getOrderByCode, getOrderByCodeAndPhone } from "@/server/repos/orders";
-import { hasOrderAccess } from "@/lib/order-access";
+import { getOrderByCode, getOrderByCodeAndPhone, listDeviceOrders } from "@/server/repos/orders";
+import { currentDeviceId, hasOrderAccess } from "@/lib/order-access";
+import { formatEgp } from "@/lib/money";
+import { AutoRefresh } from "@/components/storefront/AutoRefresh";
 import { allow, clientIp } from "@/lib/ratelimit";
 import { trackOrderAction } from "@/server/actions/track";
 import { cn } from "@/lib/utils";
@@ -18,7 +21,11 @@ const STEPS = [
   ["delivered", "تم التوصيل"],
 ] as const;
 
-export const metadata: Metadata = { title: "تتبع الطلب", robots: { index: false, follow: false } };
+export const metadata: Metadata = { title: "طلباتي", robots: { index: false, follow: false } };
+export const dynamic = "force-dynamic";
+
+const LABEL: Record<string, string> = Object.fromEntries([...STEPS, ["cancelled", "ملغي"], ["returned", "مرتجع"]]);
+const ACTIVE = new Set(["new", "confirmed", "preparing", "shipped"]);
 
 type SP = { code?: string | string[]; phone?: string | string[]; e?: string | string[] };
 type Props = { params: Promise<{ store: string }>; searchParams: Promise<SP> };
@@ -38,9 +45,13 @@ export default async function TrackPage({ params, searchParams }: Props) {
   let missing = one(sp.e) === "notfound";
   let o: Order = null;
 
+  const device = await currentDeviceId();
+  const mine = device ? await listDeviceOrders(store.id, device) : [];
+
   if (CODE_RE.test(code)) {
-    if (await hasOrderAccess(store.id, code)) {
-      o = await getOrderByCode(store.id, code);
+    const found = await getOrderByCode(store.id, code);
+    if (found && (await hasOrderAccess(store.id, code, found.visitorId))) {
+      o = found;
     } else if (legacyPhone) {
       // روابط قديمة فيها الموبايل: مدعومة مع حد المحاولات
       if (await allow("track", clientIp(await headers()))) {
@@ -57,8 +68,50 @@ export default async function TrackPage({ params, searchParams }: Props) {
 
   return (
     <div className="container-x max-w-xl py-12">
-      <h1 className="mb-6 text-3xl">تتبع طلبك</h1>
+      {mine.some((m) => ACTIVE.has(m.status)) || (o && ACTIVE.has(o.status)) ? <AutoRefresh everyMs={30_000} /> : null}
+      <h1 className="mb-2 text-3xl">{mine.length ? "طلباتي" : "تتبع طلبك"}</h1>
+      {mine.length ? (
+        <p className="mb-5 flex items-center gap-1.5 text-sm text-muted-foreground">
+          <Smartphone strokeWidth={SW} className="size-4" aria-hidden="true" /> محفوظة على هذا الجهاز، فلا تحتاج لحفظ رقم الطلب.
+        </p>
+      ) : null}
 
+      {mine.length ? (
+        <ul className="mb-8 space-y-2.5">
+          {mine.map((m) => {
+            const active = ACTIVE.has(m.status);
+            const selected = o?.code === m.code;
+            return (
+              <li key={m.id}>
+                <Link
+                  href={`/track?code=${encodeURIComponent(m.code)}`}
+                  scroll={false}
+                  aria-current={selected ? "true" : undefined}
+                  className={cn("surface flex items-center gap-3 p-4 transition-shadow hover:shadow-md", selected && "ring-2 ring-primary/40")}
+                >
+                  <span className={cn("grid size-10 shrink-0 place-items-center rounded-xl", active ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground")}>
+                    <PackageCheck strokeWidth={SW} className="size-5" aria-hidden="true" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-2">
+                      <b dir="ltr" className="font-mono">{m.code}</b>
+                      <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-bold", active ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground")}>
+                        {LABEL[m.status] ?? m.status}
+                      </span>
+                    </span>
+                    <span className="mt-0.5 block text-xs text-muted-foreground">
+                      {m.createdAt.toLocaleDateString("ar-EG", { day: "numeric", month: "long" })} · {formatEgp(m.total)}
+                    </span>
+                  </span>
+                  <ChevronLeft strokeWidth={SW} className="size-4 text-muted-foreground" aria-hidden="true" />
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+
+      {mine.length ? <h2 className="mb-3 text-base font-bold">طلبت من جهاز آخر؟</h2> : null}
       <form action={trackOrderAction.bind(null, store.subdomain)} className="surface grid gap-3 p-5 sm:grid-cols-[1fr_1fr_auto]">
         <input name="code" defaultValue={code} placeholder="رقم الطلب (CLP-XXXXX)" dir="ltr" maxLength={20} className={cn(INPUT, "uppercase")} required />
         <input name="phone" placeholder="رقم الموبايل" inputMode="tel" autoComplete="tel" dir="ltr" maxLength={20} className={INPUT} required />

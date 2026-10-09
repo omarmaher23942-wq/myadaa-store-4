@@ -5,5 +5,5 @@ export const STORE = {
   subdomain: "myadaa",
   /** المنصة التي استُلم منها المتجر (للاستلام الأول فقط من صفحة /setup). */
   importFrom: "https://colapia.com",
-  generatedAt: "2026-10-08T20:40:18.227Z",
+  generatedAt: "2026-10-09T00:20:59.874Z",
 } as const;
