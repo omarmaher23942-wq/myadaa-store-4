@@ -14,11 +14,47 @@ import { storeBlueprints, storeSnapshots, stores } from "@/db/schema";
 import { getMerchantStoreOrNull } from "@/server/auth";
 import { invalidateStoreCache } from "@/lib/tenant";
 import { z } from "zod";
-import { validateBlueprint, type StoreBlueprint } from "@/blueprint/schema";
+import { blueprintSchema, validateBlueprint, type StoreBlueprint } from "@/blueprint/schema";
+import { describeIssue } from "@/blueprint/issues";
+import { applyChanges, type BpChange } from "@/lib/blueprint-patch";
 
 export type ActionResult<T = undefined> =
   | { ok: true; data?: T; error?: undefined }
   | { ok: false; error: string; data?: undefined };
+
+const changesSchema = z
+  .array(
+    z.object({
+      path: z.union([z.tuple([z.string().min(1).max(40)]), z.tuple([z.string().min(1).max(40), z.string().min(1).max(60)])]),
+      value: z.unknown(),
+    })
+  )
+  .max(300);
+
+/**
+ * يحفظ «ما تغيّر فقط» (diffBlueprint في lib/blueprint-patch.ts) فوق النسخة الحالية في الخادم، لا نسخة الصفحة كاملة:
+ * تعديل حُفظ من صفحة أخرى بعد فتح هذه الصفحة يبقى. يعيد النسخة الناتجة لتبني عليها الصفحة تعديلاتها التالية.
+ */
+export async function saveBlueprintChangesAction(raw: unknown, label: string): Promise<ActionResult<{ version: number; blueprint: StoreBlueprint }>> {
+  try {
+    const s = await getMerchantStoreOrNull();
+    if (!s) return { ok: false, error: "انتهت جلستك، سجّل الدخول من جديد" };
+    const parsed = changesSchema.safeParse(raw);
+    if (!parsed.success) return { ok: false, error: "تغييرات غير صالحة" };
+    if (!parsed.data.length) return { ok: false, error: "لا تغييرات للحفظ" };
+    const [row] = await db.select().from(storeBlueprints).where(eq(storeBlueprints.storeId, s.storeId)).limit(1);
+    if (!row) return { ok: false, error: "تعذر قراءة إعدادات المتجر" };
+    const next = applyChanges(row.data as Record<string, unknown>, parsed.data as BpChange[]) as unknown as StoreBlueprint;
+    const r = await saveBlueprintAction(next, String(label).slice(0, 80));
+    if (!r.ok) return r;
+    const v = validateBlueprint(next);
+    return { ok: true, data: { version: r.data!.version, blueprint: v.ok ? v.data : next } };
+  } catch (e) {
+    unstable_rethrow(e);
+    console.error("[saveBlueprintChangesAction] error:", e);
+    return { ok: false, error: "تعذر حفظ إعدادات المتجر" };
+  }
+}
 
 export async function saveBlueprintAction(
   next: StoreBlueprint,
@@ -28,14 +64,12 @@ export async function saveBlueprintAction(
     const s = await getMerchantStoreOrNull();
     if (!s) return { ok: false, error: "غير مصرح" };
 
-    const v = validateBlueprint(next);
-    if (!v.ok) {
-      const first = v.errors[0];
-      return {
-        ok: false,
-        error: first ? `${first.path}: ${first.message}` : "Blueprint غير صالح",
-      };
+    const parsed = blueprintSchema.safeParse(next);
+    if (!parsed.success) {
+      const first = parsed.error.issues[0];
+      return { ok: false, error: first ? describeIssue(first, next).text : "إعدادات المتجر غير صالحة" };
     }
+    const v = { data: parsed.data };
 
     const [cur] = await db
       .select()
@@ -97,7 +131,6 @@ export async function saveBlueprintAction(
     await invalidateStoreCache(s.store);
     revalidatePath("/admin");
     revalidatePath("/dashboard/settings");
-    revalidatePath("/dashboard/settings");
     revalidatePath("/dashboard");
     return { ok: true, data: { version } };
   } catch (e) {
@@ -141,43 +174,5 @@ export async function revertSnapshotAction(
     // eslint-disable-next-line no-console
     console.error("[revertSnapshotAction] error:", e);
     return { ok: false, error: "تعذر الرجوع للنسخة" };
-  }
-}
-
-/**
- * الحقول التشغيلية الوحيدة التي يملك التاجر تعديلها في جدول stores.
- * أي مفتاح آخر (status, merchantId, subdomain, …) يُحذف قبل الكتابة.
- */
-const storeOpsSchema = z
-  .object({
-    acceptingOrders: z.boolean().optional(),
-    vacationMessage: z.string().trim().max(300).optional(),
-    showcaseOptIn: z.boolean().optional(),
-  });
-
-export async function setStoreOpsAction(input: unknown): Promise<ActionResult> {
-  try {
-    const s = await getMerchantStoreOrNull();
-    if (!s) return { ok: false, error: "غير مصرح" };
-
-    const parsed = storeOpsSchema.safeParse(input);
-    if (!parsed.success) return { ok: false, error: "بيانات غير صالحة" };
-
-    await db
-      .update(stores)
-      .set({ ...parsed.data, updatedAt: new Date() })
-      .where(eq(stores.id, s.storeId));
-
-    await invalidateStoreCache(s.store);
-    revalidatePath("/admin");
-    revalidatePath("/dashboard/settings");
-    revalidatePath("/dashboard/settings");
-    revalidatePath("/dashboard");
-    return { ok: true };
-  } catch (e) {
-    unstable_rethrow(e);
-    // eslint-disable-next-line no-console
-    console.error("[setStoreOpsAction] error:", e);
-    return { ok: false, error: "تعذر تحديث عمليات المتجر" };
   }
 }

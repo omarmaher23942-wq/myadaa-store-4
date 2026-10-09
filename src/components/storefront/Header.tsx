@@ -19,6 +19,8 @@ import {
   Package,
 } from "lucide-react";
 import { useCart } from "@/store/cart";
+import { useHydrated } from "./CartView";
+import { arCount, NOUN } from "@/lib/format";
 import { hrefFor } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import { CUSTOMER_ACCOUNTS } from "@/lib/edition";
@@ -39,7 +41,10 @@ export function Header({
   categories: Cat[];
   channels?: StoreBlueprint["channels"];
 }) {
-  const count = useCart((s) => s.count());
+  // السلة محفوظة في المتصفح والخادم يرسم صفراً: العدد يظهر بعد التركيب فقط (وإلا hydration mismatch في كل صفحة).
+  const hydrated = useHydrated();
+  const cartCount = useCart((s) => s.count());
+  const count = hydrated ? cartCount : 0;
   const openCart = useCart((s) => s.open);
   const { customer, design } = useStore();
   const t = useCopy();
@@ -261,7 +266,7 @@ export function Header({
               onClick={openCart}
               data-cart-icon
               className="relative grid size-10 place-items-center rounded-xl transition-transform active:scale-95"
-              aria-label={`السلة${count > 0 ? ` — ${count} منتجات` : ""}`}
+              aria-label={`السلة${count > 0 ? ` — ${arCount(count, NOUN.piece)}` : ""}`}
             >
               <ShoppingBag
                 className="size-5"

@@ -1,122 +1,16 @@
 import "server-only";
-import { and, eq, gte, sql, desc, ne, isNotNull } from "drizzle-orm";
+import { and, eq, gte, sql, desc, ne } from "drizzle-orm";
 import { getTenantDb } from "@/db/tenant";
 import {
   analyticsEvents,
   orders,
   orderItems,
   products,
-  abandonedCarts,
-  customers,
 } from "@/db/schema";
 
 export type RangeDays = 7 | 30 | 90;
 
-export type DashboardStats = Awaited<ReturnType<typeof dashboardStats>>;
 export type AnalyticsStats = Awaited<ReturnType<typeof analyticsStats>>;
-
-// ─── Dashboard: بيانات اللوحة الرئيسية ─────────────────────────────────────
-export async function dashboardStats(storeId: string, days: RangeDays = 30) {
-  const db = await getTenantDb(storeId);
-  const since = new Date(Date.now() - days * 864e5);
-
-  const [ev] = await db
-    .select({
-      // زيارة = جهاز في يوم (التحديث والخروج والعودة في نفس اليوم لا تكرر الزيارة).
-      views: sql<number>`count(distinct (visitor_id || ':' || to_char(created_at at time zone 'Africa/Cairo','YYYY-MM-DD'))) filter (where name='page_view')`.mapWith(Number),
-      visitors: sql<number>`count(distinct visitor_id)`.mapWith(Number),
-      atc: sql<number>`count(distinct visitor_id) filter (where name='add_to_cart')`.mapWith(Number),
-      checkouts: sql<number>`count(distinct visitor_id) filter (where name='begin_checkout')`.mapWith(Number),
-    })
-    .from(analyticsEvents)
-    .where(
-      and(
-        eq(analyticsEvents.storeId, storeId),
-        gte(analyticsEvents.createdAt, since)
-      )
-    );
-
-  // المبيعات المحققة: استثناء الملغي والمرتجع. الإيراد = الإجمالي - fee (COD) - shipping - discount.
-  const [od] = await db
-    .select({
-      count: sql<number>`count(*)`.mapWith(Number),
-      gross: sql<number>`coalesce(sum(${orders.totalPiasters}) filter (where ${orders.status} not in ('cancelled','returned')),0)`.mapWith(Number),
-      net: sql<number>`coalesce(sum(${orders.subtotalPiasters} - ${orders.discountPiasters}) filter (where ${orders.status} not in ('cancelled','returned')),0)`.mapWith(Number),
-      pending: sql<number>`count(*) filter (where ${orders.status}='new')`.mapWith(Number),
-      reviewPay: sql<number>`count(*) filter (where ${orders.paymentStatus}='under_review')`.mapWith(Number),
-    })
-    .from(orders)
-    .where(
-      and(eq(orders.storeId, storeId), gte(orders.createdAt, since))
-    );
-
-  // العملاء الجدد في الفترة.
-  const [cust] = await db
-    .select({
-      total: sql<number>`count(*)`.mapWith(Number),
-      newOnes: sql<number>`count(*) filter (where ${customers.createdAt} >= ${since.toISOString()})`.mapWith(Number),
-    })
-    .from(customers)
-    .where(eq(customers.storeId, storeId));
-
-  // أحدث الطلبات.
-  const recentOrders = await db
-    .select({
-      id: orders.id,
-      code: orders.code,
-      customerName: orders.customerName,
-      governorate: orders.governorate,
-      total: orders.totalPiasters,
-      status: orders.status,
-      createdAt: orders.createdAt,
-    })
-    .from(orders)
-    .where(eq(orders.storeId, storeId))
-    .orderBy(desc(orders.createdAt))
-    .limit(6);
-
-  // السلات المتروكة (مع رقم هاتف قابل للمراسلة).
-  const abandoned = await db
-    .select({
-      id: abandonedCarts.id,
-      name: abandonedCarts.name,
-      phone: abandonedCarts.phone,
-      subtotal: abandonedCarts.subtotalPiasters,
-      items: abandonedCarts.items,
-      lastSeenAt: abandonedCarts.lastSeenAt,
-      whatsappContactedAt: abandonedCarts.whatsappContactedAt,
-    })
-    .from(abandonedCarts)
-    .where(
-      and(
-        eq(abandonedCarts.storeId, storeId),
-        isNotNull(abandonedCarts.phone),
-        sql`${abandonedCarts.recoveredOrderId} is null`,
-        gte(abandonedCarts.lastSeenAt, since)
-      )
-    )
-    .orderBy(desc(abandonedCarts.lastSeenAt))
-    .limit(10);
-
-  // صحة المتجر (يُستخدم في HealthScore).
-  const [prodCounts] = await db
-    .select({
-      total: sql<number>`count(*) filter (where ${products.status}='active')`.mapWith(Number),
-      lowStock: sql<number>`count(*) filter (where ${products.trackStock}=true and ${products.stock} <= 3 and ${products.status}='active')`.mapWith(Number),
-    })
-    .from(products)
-    .where(eq(products.storeId, storeId));
-
-  return {
-    ev: ev!,
-    od: od!,
-    cust: cust!,
-    recentOrders,
-    abandoned,
-    prodCounts: prodCounts!,
-    conversion: ev!.visitors > 0 ? (od!.count / ev!.visitors) * 100 : 0,
-  };
-}
 
 // ─── Analytics: بيانات صفحة التحليلات ──────────────────────────────────────
 export async function analyticsStats(storeId: string, days: RangeDays = 30) {

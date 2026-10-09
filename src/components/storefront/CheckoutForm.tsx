@@ -31,6 +31,7 @@ import { toast } from "sonner";
 import { useCart, itemKey } from "@/store/cart";
 import { GOVERNORATES } from "@/lib/egypt";
 import { formatEgp } from "@/lib/money";
+import { clearPromo, readPromo } from "./PromoFromLink";
 import { normalizeEgyptianPhone } from "@/lib/phone";
 import {
   placeOrderAction,
@@ -39,6 +40,7 @@ import {
   type Quote,
 } from "@/server/actions/checkout";
 import { UploadButton } from "@/lib/uploadthing-client";
+import { paymentMethods } from "@/lib/payment-methods";
 import type { StoreBlueprint } from "@/blueprint/schema";
 import { useHydrated } from "./CartView";
 import { CheckoutProgress, useCheckoutProgress } from "./CheckoutProgress";
@@ -77,35 +79,7 @@ function newKey(): string {
   }
 }
 
-function methodsOf(p: StoreBlueprint["payments"]): Method[] {
-  const out: Method[] = [];
-  if (p.cod.enabled)
-    out.push({
-      id: "cod",
-      label: "الدفع عند الاستلام كاش",
-      desc: "ادفع كاش للمندوب عند الاستلام",
-    });
-  if (p.vodafoneCash.enabled)
-    out.push({
-      id: "vodafone_cash",
-      label: "فودافون كاش / محافظ إلكترونية",
-      desc: p.vodafoneCash.number
-        ? `حوّل على ${p.vodafoneCash.number}`
-        : "تحويل فودافون كاش",
-      targetNumber: p.vodafoneCash.number,
-    });
-  if (p.instapay.enabled)
-    out.push({
-      id: "instapay",
-      label: "إنستاباي (InstaPay)",
-      desc:
-        p.instapay.address ?? p.instapay.number
-          ? `حوّل على ${p.instapay.address ?? p.instapay.number}`
-          : "تحويل إنستاباي",
-      targetNumber: p.instapay.address ?? p.instapay.number,
-    });
-  return out;
-}
+const methodsOf = (p: StoreBlueprint["payments"]) => paymentMethods(p) as Method[];
 
 const PHONE_RE = /^01[0125]\d{8}$/;
 function isPhoneValid(v: string) {
@@ -167,6 +141,15 @@ export function CheckoutForm({
   const [quoting, setQuoting] = useState(false);
   const [pending, start] = useTransition();
   const [err, setErr] = useState<{ field?: string; msg: string } | null>(null);
+
+  // كود من رابط خصم شاركه التاجر (?promo=): يُملأ بعد التركيب (التخزين المحلي لا يُقرأ أثناء العرض على الخادم).
+  const [promoFromLink, setPromoFromLink] = useState<string | null>(null);
+  useEffect(() => {
+    const code = readPromo(subdomain);
+    if (!code) return;
+    setPromoFromLink(code);
+    setF((x) => (x.discountCode ? x : { ...x, discountCode: code }));
+  }, [subdomain]);
 
   const idemKey = useRef("");
   const quoteSeq = useRef(0);
@@ -360,6 +343,7 @@ export function CheckoutForm({
           total: r.data.total,
         });
         clear();
+        clearPromo(subdomain);
         router.push(`/order/${encodeURIComponent(r.data.code)}`);
       } catch {
         toast.error("تعذّر تأكيد الطلب، يرجى المحاولة ثانية");
@@ -775,6 +759,9 @@ export function CheckoutForm({
             />
             {quote?.discountError ? (
               <p className="text-xs font-bold text-rose-500">{quote.discountError}</p>
+            ) : null}
+            {promoFromLink && f.discountCode === promoFromLink && !quote?.discountError ? (
+              <p className="text-xs text-[var(--muted-foreground)]">من رابط الخصم الذي فتحته.</p>
             ) : null}
             {quote && quote.discount > 0 ? (
               <p className="flex items-center gap-1.5 rounded-lg bg-emerald-500/10 p-2 text-xs font-bold text-emerald-700">

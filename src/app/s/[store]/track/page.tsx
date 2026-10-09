@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import Link from "next/link";
-import { Check, ChevronLeft, PackageCheck, Smartphone } from "lucide-react";
+import { Check, ChevronLeft, PackageCheck, Smartphone, Star } from "lucide-react";
 import { requireStore } from "@/lib/tenant";
 import { getOrderByCode, getOrderByCodeAndPhone, listDeviceOrders } from "@/server/repos/orders";
 import { currentDeviceId, hasOrderAccess } from "@/lib/order-access";
@@ -156,6 +156,12 @@ export default async function TrackPage({ params, searchParams }: Props) {
               رقم الشحنة: <b dir="ltr">{o.trackingNumber}</b> {o.courierName && `(${o.courierName})`}
             </p>
           )}
+
+          {o.status === "delivered" ? (
+            <Link href={`/review?o=${encodeURIComponent(o.code)}`} className="btn-brand mt-6 w-full">
+              <Star strokeWidth={SW} className="size-4" aria-hidden="true" /> قيّم مشترياتك
+            </Link>
+          ) : null}
         </div>
       )}
     </div>

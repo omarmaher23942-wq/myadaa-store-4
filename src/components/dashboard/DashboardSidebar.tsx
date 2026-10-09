@@ -3,45 +3,16 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useEffect, useCallback } from "react";
-import {
-  LayoutDashboard,
-  Store,
-  ShoppingCart,
-  Package,
-  Users,
-  BarChart3,
-  Settings,
-  CreditCard,
-  LogOut,
-  Menu,
-  X,
-  ExternalLink,
-  FolderTree,
-  TicketPercent,
-  Truck,
-  Star,
-  Palette,
-  Wand2,
-  ShieldCheck,
-  type LucideIcon,
-  KeyRound,
-} from "lucide-react";
+import { LogOut, Menu, X, ExternalLink } from "lucide-react";
 import { motion, AnimatePresence, useReducedMotion } from "motion/react";
 import { merchantLogoutAction } from "@/server/actions/auth";
 import { cn, storeUrl, storeHost } from "@/lib/utils";
-import { EDITION, INTEGRATIONS_NAV, PLATFORM_ONLY_NAV } from "@/lib/edition";
-import { useNotifications } from "./RealtimeProvider";
+import { arCount, NOUN } from "@/lib/format";
+import { useDashboardPulse } from "./DashboardPulse";
 import { StoreSwitcher, type SwitcherStore } from "./StoreSwitcher";
+import { MOBILE_NAV_HREFS, NAV_ITEMS, NAV_SECTIONS, isNavActive, type BadgeKey, type NavItem } from "./nav";
 
 const SW = 1.75;
-
-type NavItem = {
-  label: string;
-  href: string;
-  icon: LucideIcon;
-  exact?: boolean;
-  badgeKey?: "orders" | "reviews" | "conversations";
-};
 
 type Props = {
   merchant: {
@@ -50,89 +21,43 @@ type Props = {
     avatarUrl: string | null;
   };
   store: {
+    id: string;
     name: string;
     subdomain: string;
     status: string;
   } | null;
-  badges: {
-    orders: number;
-    trialDaysLeft: number | null;
-  };
-  allStores?: SwitcherStore[];
-  pendingReviews?: number;
+  /** كل متاجر التاجر (المبدّل يظهر من متجرين فأكثر). */
+  allStores: SwitcherStore[];
 };
 
-const ALL_SECTIONS: Array<{ title: string; items: NavItem[] }> = [
-  {
-    title: "الرئيسية",
-    items: [
-      { label: "نظرة عامة", href: "/dashboard", icon: LayoutDashboard, exact: true },
-      { label: "متجري", href: "/dashboard/store", icon: Store },
-      { label: "التحليلات", href: "/dashboard/analytics", icon: BarChart3 },
-    ],
-  },
-  {
-    title: "المبيعات",
-    items: [
-      { label: "الطلبات", href: "/dashboard/orders", icon: ShoppingCart, badgeKey: "orders" },
-      { label: "العملاء", href: "/dashboard/customers", icon: Users },
-      { label: "المراجعات", href: "/dashboard/reviews", icon: Star, badgeKey: "reviews" },
-    ],
-  },
-  {
-    title: "الكتالوج",
-    items: [
-      { label: "المنتجات", href: "/dashboard/products", icon: Package },
-      { label: "الفئات", href: "/dashboard/categories", icon: FolderTree },
-      { label: "أكواد الخصم", href: "/dashboard/discounts", icon: TicketPercent },
-      { label: "الشحن", href: "/dashboard/shipping", icon: Truck },
-      { label: "السياسات والضمان", href: "/dashboard/policies", icon: ShieldCheck },
-    ],
-  },
-  {
-    title: "التصميم",
-    items: [
-      { label: "تصميم المتجر", href: "/dashboard/design", icon: Wand2 },
-      { label: "محرر المحتوى", href: "/dashboard/content", icon: Palette },
-    ],
-  },
-  {
-    title: "الحساب",
-    items: [
-      { label: "الإعدادات", href: "/dashboard/settings", icon: Settings },
-      { label: INTEGRATIONS_NAV.label, href: INTEGRATIONS_NAV.href, icon: KeyRound },
-      { label: "الفوترة", href: "/dashboard/billing", icon: CreditCard },
-    ],
-  },
-];
+const BADGE_LABEL: Record<BadgeKey, (n: number) => string> = {
+  orders: (n) => `${arCount(n, NOUN.order)} بانتظار إجرائك`,
+  reviews: (n) => `${arCount(n, NOUN.review)} بانتظار الاعتماد`,
+  products: (n) => `نفد مخزون ${arCount(n, NOUN.product)}`,
+};
 
-const NAV_SECTIONS = ALL_SECTIONS.map((section) => ({
-  ...section,
-  items: section.items.filter((i) => !(PLATFORM_ONLY_NAV as readonly string[]).includes(i.href) || EDITION === "platform"),
-}));
-
-const MOBILE_NAV: NavItem[] = [
-  { label: "الرئيسية", href: "/dashboard", icon: LayoutDashboard, exact: true },
-  { label: "الطلبات", href: "/dashboard/orders", icon: ShoppingCart, badgeKey: "orders" },
-  { label: "المنتجات", href: "/dashboard/products", icon: Package },
-  { label: "التحليلات", href: "/dashboard/analytics", icon: BarChart3 },
-  { label: "المزيد", href: "#more", icon: Menu },
-];
-
-function isActive(pathname: string, href: string, exact?: boolean): boolean {
-  if (href.includes("?")) href = href.split("?")[0]!;
-  if (exact) return pathname === href;
-  if (pathname === href) return true;
-  return pathname.startsWith(`${href}/`);
-}
+const MOBILE_NAV: NavItem[] = MOBILE_NAV_HREFS.map((href) => NAV_ITEMS.find((i) => i.href === href)!).filter(Boolean);
+const MORE = { label: "المزيد", icon: Menu };
+const MOBILE_LABEL: Record<string, string> = { "/dashboard": "الرئيسية" };
 
 export function DashboardSidebar(props: Props) {
   const pathname = usePathname() ?? "";
   const [drawerOpen, setDrawerOpen] = useState(false);
   const reduce = useReducedMotion();
 
-  const orderBadge = props.badges.orders;
+  const { counts, ready } = useDashboardPulse();
+  const badgeOf = useCallback(
+    (key?: BadgeKey): number => {
+      if (!ready || !key) return 0;
+      if (key === "orders") return counts.ordersToHandle;
+      if (key === "reviews") return counts.pendingReviews;
+      return counts.outOfStock;
+    },
+    [counts, ready]
+  );
   const close = useCallback(() => setDrawerOpen(false), []);
+  // ما لا يظهر في الشريط السفلي (التقييمات) يُلمَّح له بنقطة على «المزيد».
+  const moreBadge = badgeOf("reviews");
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -170,7 +95,7 @@ export function DashboardSidebar(props: Props) {
         <SidebarContent
           {...props}
           pathname={pathname}
-          orderBadge={orderBadge}
+          badgeOf={badgeOf}
           close={close}
         />
       </aside>
@@ -183,54 +108,37 @@ export function DashboardSidebar(props: Props) {
         <ul className="flex items-stretch justify-around gap-1 px-1 py-1.5">
           {MOBILE_NAV.map((item) => {
             const Icon = item.icon;
-            const active = isActive(pathname, item.href, item.exact);
-            const badgeCount = item.badgeKey === "orders" ? orderBadge : 0;
-
-            if (item.href === "#more") {
-              return (
-                <li key={item.href} className="flex-1">
-                  <button
-                    type="button"
-                    onClick={() => setDrawerOpen(true)}
-                    aria-label="المزيد"
-                    className="flex w-full flex-col items-center gap-1 rounded-xl px-2 py-1.5 text-[10px] font-bold text-ink-3 transition-colors hover:bg-edge/5"
-                  >
-                    <Icon className="size-5" strokeWidth={SW} aria-hidden="true" />
-                    <span>{item.label}</span>
-                  </button>
-                </li>
-              );
-            }
-
+            const active = isNavActive(pathname, item.href, item.exact);
+            const badgeCount = badgeOf(item.badgeKey);
             return (
               <li key={item.href} className="flex-1">
                 <Link
                   href={item.href}
                   aria-current={active ? "page" : undefined}
                   className={cn(
-                    "relative flex w-full flex-col items-center gap-1 rounded-xl px-2 py-1.5 text-[10px] font-bold transition-colors",
-                    active
-                      ? "text-ink"
-                      : "text-ink-3 hover:bg-edge/5 hover:text-ink"
+                    "relative flex min-h-12 w-full flex-col items-center justify-center gap-1 rounded-xl px-1 text-[10.5px] font-bold transition-colors",
+                    active ? "text-ink" : "text-ink-3 hover:bg-edge/5 hover:text-ink"
                   )}
                 >
                   <span className="relative">
-                    <Icon
-                      className={cn("size-5", active ? "text-nova-2" : "")}
-                      strokeWidth={active ? 2.25 : SW}
-                      aria-hidden="true"
-                    />
-                    {badgeCount > 0 ? (
-                      <span className="absolute -end-1.5 -top-1 grid size-3.5 min-w-3.5 place-items-center rounded-full bg-rose-500 px-1 font-mono text-[8.5px] font-black text-white ring-2 ring-space-2">
-                        {badgeCount > 9 ? "9+" : badgeCount}
+                    <Icon className={cn("size-5", active && "text-nova-2")} strokeWidth={active ? 2.25 : SW} aria-hidden="true" />
+                    {badgeCount > 0 && item.badgeKey ? (
+                      <span
+                        className={cn(
+                          "absolute -end-2 -top-1 grid h-4 min-w-4 place-items-center rounded-full px-1 font-mono text-[9px] font-black leading-none ring-2 ring-space-2",
+                          item.badgeKey === "products" ? "bg-warn text-space" : "bg-rose-500 text-white"
+                        )}
+                      >
+                        <span aria-hidden="true">{badgeCount > 9 ? "9+" : badgeCount}</span>
+                        <span className="sr-only">{BADGE_LABEL[item.badgeKey](badgeCount)}</span>
                       </span>
                     ) : null}
                   </span>
-                  <span>{item.label}</span>
+                  <span>{MOBILE_LABEL[item.href] ?? item.label}</span>
                   {active ? (
                     <motion.span
                       layoutId="mobile-nav-active"
-                      className="absolute inset-x-2 -top-[1px] h-0.5 rounded-full bg-nova-2"
+                      className="absolute inset-x-3 -top-1.5 h-0.5 rounded-full bg-nova-2"
                       transition={{ type: "spring", stiffness: 400, damping: 30 }}
                     />
                   ) : null}
@@ -238,6 +146,23 @@ export function DashboardSidebar(props: Props) {
               </li>
             );
           })}
+          <li className="flex-1">
+            <button
+              type="button"
+              onClick={() => setDrawerOpen(true)}
+              aria-label={moreBadge > 0 ? "المزيد، فيه ما يحتاج انتباهك" : "المزيد"}
+              aria-expanded={drawerOpen}
+              className="flex min-h-12 w-full flex-col items-center justify-center gap-1 rounded-xl px-1 text-[10.5px] font-bold text-ink-3 transition-colors hover:bg-edge/5 hover:text-ink"
+            >
+              <span className="relative">
+                <MORE.icon className="size-5" strokeWidth={SW} aria-hidden="true" />
+                {moreBadge > 0 ? (
+                  <span aria-hidden="true" className="absolute -end-1 -top-0.5 size-2 rounded-full bg-rose-500 ring-2 ring-space-2" />
+                ) : null}
+              </span>
+              <span>{MORE.label}</span>
+            </button>
+          </li>
         </ul>
       </nav>
 
@@ -280,7 +205,7 @@ export function DashboardSidebar(props: Props) {
               <SidebarContent
                 {...props}
                 pathname={pathname}
-                orderBadge={orderBadge}
+                badgeOf={badgeOf}
                 close={close}
                 isMobile
               />
@@ -296,46 +221,21 @@ function SidebarContent({
   merchant,
   store,
   allStores,
-  pendingReviews,
   pathname,
-  orderBadge,
+  badgeOf,
   close,
   isMobile,
 }: Props & {
   pathname: string;
-  orderBadge: number;
+  badgeOf: (key?: BadgeKey) => number;
   close: () => void;
   isMobile?: boolean;
 }) {
-  const { notifications } = useNotifications();
-  const pendingReviewsCount = pendingReviews ?? 0;
-
-  const getBadge = (item: NavItem): number => {
-    if (item.badgeKey === "orders") return orderBadge;
-    if (item.badgeKey === "reviews") return pendingReviewsCount;
-    if (item.badgeKey === "conversations") return notifications.length;
-    return 0;
-  };
-
   return (
     <>
       <div className="border-b border-edge/10 p-4">
-        {allStores && allStores.length >= 2 ? (
-          <StoreSwitcher
-            currentStore={
-              store
-                ? {
-                    id:
-                      allStores.find((s) => s.subdomain === store.subdomain)?.id ??
-                      "current",
-                    name: store.name,
-                    subdomain: store.subdomain,
-                    status: store.status,
-                  }
-                : null
-            }
-            stores={allStores}
-          />
+        {allStores.length >= 2 ? (
+          <StoreSwitcher currentId={store?.id ?? null} stores={allStores} />
         ) : (
           <Link
             href="/dashboard"
@@ -390,8 +290,8 @@ function SidebarContent({
             <ul className="isolate space-y-0.5">
               {section.items.map((item) => {
                 const Icon = item.icon;
-                const active = isActive(pathname, item.href, item.exact);
-                const count = getBadge(item);
+                const active = isNavActive(pathname, item.href, item.exact);
+                const count = badgeOf(item.badgeKey);
 
                 return (
                   <li key={item.href}>
@@ -429,9 +329,16 @@ function SidebarContent({
 
                       <span className="flex-1 truncate">{item.label}</span>
 
-                      {count > 0 ? (
-                        <span className="rounded-full bg-nova px-1.5 py-0.5 font-mono text-[10px] font-black text-white tabular-nums">
-                          {count > 99 ? "99+" : count}
+                      {count > 0 && item.badgeKey ? (
+                        <span
+                          title={BADGE_LABEL[item.badgeKey](count)}
+                          className={cn(
+                            "rounded-full px-1.5 py-0.5 font-mono text-[10px] font-black tabular-nums",
+                            item.badgeKey === "products" ? "bg-warn/15 text-warn" : "bg-nova text-white"
+                          )}
+                        >
+                          <span aria-hidden="true">{count > 99 ? "99+" : count}</span>
+                          <span className="sr-only">{BADGE_LABEL[item.badgeKey](count)}</span>
                         </span>
                       ) : null}
                     </Link>
@@ -447,7 +354,7 @@ function SidebarContent({
         <form action={merchantLogoutAction}>
           <button
             type="submit"
-            className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-[11.5px] font-bold text-ink-2/60 transition-colors hover:bg-red-500/10 hover:text-red-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+            className="flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-[12px] font-bold text-ink-3 transition-colors hover:bg-bad/10 hover:text-bad focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bad"
           >
             <LogOut strokeWidth={SW} className="size-4" aria-hidden="true" />
             <span>تسجيل الخروج</span>

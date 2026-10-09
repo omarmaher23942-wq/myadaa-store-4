@@ -93,7 +93,7 @@ export function Copilot({ storeName }: { storeName: string }) {
         aria-expanded={open}
         whileHover={reduce ? undefined : { scale: 1.06 }}
         whileTap={reduce ? undefined : { scale: 0.95 }}
-        className="fixed bottom-24 end-4 z-40 grid size-14 place-items-center rounded-full bg-gradient-to-br from-nova via-aurora to-nova-deep text-white shadow-2xl shadow-nova/40 ring-1 ring-white/20 md:bottom-6 md:end-6"
+        className="copilot-fab fixed bottom-24 end-4 z-40 grid size-14 place-items-center rounded-full bg-gradient-to-br from-nova via-aurora to-nova-deep text-white shadow-2xl shadow-nova/40 ring-1 ring-white/20 md:bottom-6 md:end-6"
       >
         <span aria-hidden="true" className="absolute inset-0 animate-ping rounded-full bg-nova/30 [animation-duration:3s]" />
         {open ? <X className="relative size-6" /> : <Sparkles className="relative size-6" />}

@@ -1,330 +1,328 @@
-// dashboard/customers/page.tsx — قاعدة عملاء مع segmentation (v3).
-//
-// التعديلات الجذرية (موجة 3):
-//  1) تصنيف تلقائي: VIP / New / At Risk / Churned.
-//  2) فلترة بـ segment.
-//  3) AI-powered targeted campaigns (زر "حملة مخصصة").
-//  4) Export CSV.
+// dashboard/customers/page.tsx — العملاء: شرائح بتعريفات معلنة وأعداد حقيقية (متكرر، جديد، طلب جارٍ، لم يعودوا، أرجعوا،
+// محظور)، وبحث بالاسم أو الموبايل، وترتيب، وصفحات. كل رقم محسوب من الطلبات نفسها (customers-list.ts).
 import Link from "next/link";
-import { desc, eq, and, sql, gte, lt, isNull, or } from "drizzle-orm";
-import {
-  Users,
-  UserCheck,
-  Crown,
-  AlertTriangle,
-  Clock,
-  Plus,
-  Download,
-  Send,
-} from "lucide-react";
-import { getMerchantSession } from "@/server/auth";
-import { getTenantDb } from "@/db/tenant";
-import { customers } from "@/db/schema";
 import { redirect } from "next/navigation";
+import { ChevronLeft, ChevronRight, Download, MessageCircle, Search, SearchX, Users } from "lucide-react";
+import { getMerchantSession } from "@/server/auth";
+import { listCustomers, parseCustomersQuery, NEW_DAYS, WINBACK_DAYS, type CustomerRow, type CustomerSegment, type CustomersQuery, type CustomerSort } from "@/server/repos/customers-list";
+import { timeAgo } from "@/components/dashboard/orders/parts";
 import { formatEgp } from "@/lib/money";
+import { arCount, fmtNum, NOUN } from "@/lib/format";
 import { governorateName } from "@/lib/egypt";
+import { prettyPhone } from "@/lib/phone";
+import { waLink } from "@/lib/whatsapp";
 import { NO_STORE_HREF } from "@/lib/edition";
+import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
+export const metadata = { title: "العملاء" };
 
-type Segment = "vip" | "new" | "at_risk" | "churned" | "all";
+type SP = Record<string, string | undefined>;
 
-const SEGMENTS: Array<{ key: Segment; label: string; icon: typeof Crown; color: string; hint: string }> = [
-  { key: "all", label: "الكل", icon: Users, color: "bg-edge/10 text-ink", hint: "كل العملاء" },
-  { key: "vip", label: "VIP", icon: Crown, color: "bg-amber-500/20 text-amber-700 dark:text-amber-300", hint: "3+ طلبات" },
-  { key: "new", label: "جديد", icon: Plus, color: "bg-blue-500/20 text-blue-300", hint: "خلال 30 يوم" },
-  { key: "at_risk", label: "معرض للفقدان", icon: AlertTriangle, color: "bg-orange-500/20 text-orange-600 dark:text-orange-300", hint: "60+ يوم صامت" },
-  { key: "churned", label: "فُقد", icon: Clock, color: "bg-ink-3/20 text-ink-2", hint: "120+ يوم صامت" },
+const SEGMENTS: { key: CustomerSegment; label: string; hint: string }[] = [
+  { key: "all", label: "الكل", hint: "كل من طلب من متجرك" },
+  { key: "repeat", label: "متكرر", hint: "استلم طلبين أو أكثر" },
+  { key: "new", label: "جديد", hint: `أول طلب خلال ${NEW_DAYS} يوماً` },
+  { key: "open", label: "طلب جارٍ", hint: "له طلب لم يُسلَّم بعد" },
+  { key: "winback", label: "لم يعد", hint: `اشترى ولم يطلب منذ ${WINBACK_DAYS} يوماً` },
+  { key: "returned", label: "أرجع طلباً", hint: "رفض الاستلام أو أرجع" },
+  { key: "blocked", label: "محظور", hint: "لا يستطيع إتمام طلب" },
 ];
 
-const SEGMENT_LABELS: Record<Segment, string> = {
-  all: "الكل",
-  vip: "VIP",
-  new: "جديد",
-  at_risk: "معرض للفقدان",
-  churned: "فُقد",
-};
+const SORTS: { key: CustomerSort; label: string }[] = [
+  { key: "recent", label: "آخر طلب" },
+  { key: "spent", label: "الأكثر شراءً" },
+  { key: "orders", label: "الأكثر طلبات" },
+  { key: "newest", label: "الأحدث انضماماً" },
+];
 
-export default async function DashboardCustomersPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ segment?: string }>;
-}) {
-  const session = await getMerchantSession();
-  if (!session) redirect("/login");
-  const db = await getTenantDb(session.storeId!);
+function href(q: CustomersQuery, patch: Partial<CustomersQuery>): string {
+  const n = { ...q, ...patch };
+  const p = new URLSearchParams();
+  if (n.segment !== "all") p.set("segment", n.segment);
+  if (n.sort !== "recent") p.set("sort", n.sort);
+  if (n.q) p.set("q", n.q);
+  if (n.page > 1) p.set("page", String(n.page));
+  const s = p.toString();
+  return s ? `/dashboard/customers?${s}` : "/dashboard/customers";
+}
 
-  if (!session.storeId) {
-    return (
-      <div className="mx-auto max-w-xl space-y-4 py-20 text-center">
-        <div className="mx-auto grid size-16 place-items-center rounded-3xl border border-nova-2/30 bg-nova/10 text-nova-2">
-          <Users className="size-8" strokeWidth={1.75} />
-        </div>
-        <h1 className="text-xl font-black text-ink">سجل العملاء التراكمي</h1>
-        <p className="mx-auto max-w-md text-xs leading-relaxed text-ink-3">
-          ستظهر هنا بيانات جميع المشترين من متجرك تلقائياً بمجرد إطلاق متجرك
-          واستقبال أول طلب.
-        </p>
-        <Link
-          href={NO_STORE_HREF}
-          className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-l from-nova to-nova-2 px-5 py-2.5 text-xs font-black text-space shadow-md"
-        >
-          <Plus className="size-3.5" />
-          أنشئ متجرك للبدء
-        </Link>
-      </div>
-    );
-  }
+function lastSeen(iso: string | null): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Date.now() - d.getTime() < 7 * 86_400_000) return timeAgo(iso);
+  const sameYear = d.getFullYear() === new Date().getFullYear();
+  return new Intl.DateTimeFormat("ar-EG-u-nu-latn", { day: "numeric", month: "short", ...(sameYear ? {} : { year: "numeric" }), timeZone: "Africa/Cairo" }).format(d);
+}
 
-  const { segment = "all" } = await searchParams;
-  const activeSegment = (SEGMENTS.some((s) => s.key === segment)
-    ? segment
-    : "all") as Segment;
-
-  const now = new Date();
-  const d30 = new Date(now.getTime() - 30 * 86_400_000);
-  const d60 = new Date(now.getTime() - 60 * 86_400_000);
-  const d120 = new Date(now.getTime() - 120 * 86_400_000);
-
-  // بناء where حسب الـ segment.
-  const where = and(
-    eq(customers.storeId, session.storeId),
-    activeSegment === "vip"
-      ? sql`${customers.ordersCount} >= 3`
-      : activeSegment === "new"
-      ? gte(customers.createdAt, d30)
-      : activeSegment === "at_risk"
-      ? and(
-          sql`${customers.ordersCount} >= 1`,
-          or(
-            isNull(customers.lastOrderAt),
-            lt(customers.lastOrderAt, d60)
-          ),
-          or(
-            isNull(customers.lastOrderAt),
-            gte(customers.lastOrderAt, d120)
-          )
-        )
-      : activeSegment === "churned"
-      ? and(
-          sql`${customers.ordersCount} >= 1`,
-          or(
-            isNull(customers.lastOrderAt),
-            lt(customers.lastOrderAt, d120)
-          )
-        )
-      : undefined
+function Tags({ c }: { c: CustomerRow }) {
+  const tags: { label: string; cls: string }[] = [];
+  if (c.isBlocked) tags.push({ label: "محظور", cls: "bg-bad/12 text-bad" });
+  if (c.delivered >= 2) tags.push({ label: "متكرر", cls: "bg-ok/12 text-ok" });
+  if (c.open > 0) tags.push({ label: arCount(c.open, NOUN.openOrder), cls: "bg-nova/12 text-nova-2" });
+  if (c.returned > 0) tags.push({ label: `أرجع ${arCount(c.returned, NOUN.times)}`, cls: "bg-warn/12 text-warn" });
+  if (!tags.length) return null;
+  return (
+    <span className="flex flex-wrap gap-1">
+      {tags.map((t) => (
+        <span key={t.label} className={cn("rounded-full px-2 py-0.5 text-[10.5px] font-black", t.cls)}>
+          {t.label}
+        </span>
+      ))}
+    </span>
   );
+}
 
-  const [rows, countsRaw, totalSpentRow] = await Promise.all([
-    db
-      .select()
-      .from(customers)
-      .where(where)
-      .orderBy(desc(customers.lastOrderAt))
-      .limit(300),
+function Purchases({ c }: { c: CustomerRow }) {
+  if (!c.orders) return <span className="text-ink-3">لم يطلب بعد</span>;
+  return (
+    <span>
+      {arCount(c.orders, NOUN.order)}
+      {c.delivered !== c.orders ? <span className="text-ink-3"> · استلم {fmtNum(c.delivered)}</span> : null}
+    </span>
+  );
+}
 
-    db
-      .select({
-        total: sql<number>`count(*)`.mapWith(Number),
-        vip: sql<number>`count(*) filter (where ${customers.ordersCount} >= 3)`.mapWith(Number),
-        newOnes: sql<number>`count(*) filter (where ${customers.createdAt} >= ${d30.toISOString()})`.mapWith(Number),
-        atRisk: sql<number>`count(*) filter (where ${customers.ordersCount} >= 1 and (${customers.lastOrderAt} is null or ${customers.lastOrderAt} < ${d60.toISOString()}) and (${customers.lastOrderAt} is null or ${customers.lastOrderAt} >= ${d120.toISOString()}))`.mapWith(Number),
-        churned: sql<number>`count(*) filter (where ${customers.ordersCount} >= 1 and (${customers.lastOrderAt} is null or ${customers.lastOrderAt} < ${d120.toISOString()}))`.mapWith(Number),
-      })
-      .from(customers)
-      .where(eq(customers.storeId, session.storeId)),
-
-    db
-      .select({
-        sum: sql<number>`coalesce(sum(${customers.totalSpentPiasters}), 0)`.mapWith(Number),
-      })
-      .from(customers)
-      .where(eq(customers.storeId, session.storeId)),
-  ]);
-
-  const counts = countsRaw[0]!;
-  const totalSpent = totalSpentRow[0]?.sum ?? 0;
-
-  const segmentCount = (k: Segment): number => {
-    if (k === "all") return counts.total;
-    if (k === "vip") return counts.vip;
-    if (k === "new") return counts.newOnes;
-    if (k === "at_risk") return counts.atRisk;
-    if (k === "churned") return counts.churned;
-    return 0;
-  };
+export default async function DashboardCustomersPage({ searchParams }: { searchParams: Promise<SP> }) {
+  const session = await getMerchantSession();
+  if (!session) redirect("/login?redirect=/dashboard/customers");
+  if (!session.storeId || !session.store) redirect(NO_STORE_HREF);
+  const query = parseCustomersQuery(await searchParams);
+  const data = await listCustomers(session.storeId, query);
+  const repeatRate = data.buyers ? Math.round((data.repeaters / data.buyers) * 100) : null;
+  const empty = data.counts.all === 0 && !query.q;
+  const seg = SEGMENTS.find((s) => s.key === query.segment)!;
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
-      <header className="flex flex-wrap items-end justify-between gap-3 border-b border-edge/10 pb-5">
+    <div className="mx-auto max-w-6xl space-y-4">
+      <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-black tracking-tight text-ink">
-            قاعدة العملاء
-          </h1>
-          <p className="mt-1 text-xs text-ink-3">
-            {counts.total.toLocaleString("ar-EG")} عميل · {session.store!.name}
+          <h1 className="text-2xl font-black tracking-tight text-ink">العملاء</h1>
+          <p className="mt-1 text-[12.5px] text-ink-3">
+            {empty ? "يظهر هنا كل من يطلب من متجرك تلقائياً." : `${arCount(data.counts.all, NOUN.customer)}${query.q ? " تطابق البحث" : ""}`}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        {!empty ? (
           <a
-            href="/api/dashboard/customers/export" download
-            className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-edge/10 bg-edge/[0.03] px-3.5 text-xs font-bold text-ink transition-colors hover:bg-edge/[0.06]"
+            href="/api/dashboard/customers/export"
+            download
+            className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-edge/10 bg-edge/[0.03] px-3.5 text-[12.5px] font-bold text-ink transition-colors hover:bg-edge/[0.06]"
           >
-            <Download className="size-3.5" strokeWidth={2.25} aria-hidden="true" />
-            تصدير CSV
+            <Download className="size-4" aria-hidden="true" />
+            تصدير Excel
           </a>
-          <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/[0.06] px-3.5 py-2">
-            <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-300">إجمالي المشتريات</p>
-            <p className="mt-0.5 font-mono text-sm font-black text-emerald-600 dark:text-emerald-300">
-              {formatEgp(totalSpent)}
-            </p>
-          </div>
-        </div>
+        ) : null}
       </header>
 
-      {/* Segments */}
-      <nav aria-label="تصنيفات العملاء" className="flex flex-wrap gap-2">
-        {SEGMENTS.map((s) => {
-          const Icon = s.icon;
-          const active = activeSegment === s.key;
-          const count = segmentCount(s.key);
-          return (
-            <Link
-              key={s.key}
-              href={`?segment=${s.key}`}
-              scroll={false}
-              className={
-                active
-                  ? `inline-flex h-11 items-center gap-2 rounded-xl border-2 border-nova px-4 text-xs font-black text-ink ${s.color}`
-                  : "inline-flex h-11 items-center gap-2 rounded-xl border border-edge/10 bg-edge/[0.02] px-4 text-xs font-bold text-ink-2 transition-colors hover:bg-edge/[0.04]"
-              }
-            >
-              <Icon className="size-3.5" strokeWidth={2.25} aria-hidden="true" />
-              <span>{s.label}</span>
-              <span className="rounded-full bg-black/30 px-1.5 font-mono text-[10px]">
-                {count.toLocaleString("ar-EG")}
-              </span>
-              <span className="hidden text-[9.5px] opacity-60 md:inline">{s.hint}</span>
-            </Link>
-          );
-        })}
-      </nav>
-
-      {/* Table */}
-      {rows.length === 0 ? (
-        <div className="rounded-3xl border border-dashed border-edge/10 bg-edge/[0.02] p-16 text-center">
-          <Users className="mx-auto size-10 text-ink-3 opacity-30" strokeWidth={1.75} />
-          <p className="mt-3 text-sm font-bold text-ink">
-            لا يوجد عملاء في "{SEGMENT_LABELS[activeSegment]}"
-          </p>
-          <p className="mt-1 text-xs text-ink-3">
-            جرّب تصنيفاً آخر أو انتظر وصول أول طلب.
-          </p>
+      {empty ? (
+        <div className="dash-card flex flex-col items-center gap-3 px-6 py-16 text-center">
+          <span className="grid size-14 place-items-center rounded-2xl bg-nova/12 text-nova-2">
+            <Users className="size-7" strokeWidth={1.75} aria-hidden="true" />
+          </span>
+          <p className="text-[15px] font-black text-ink">لا عملاء بعد</p>
+          <p className="max-w-md text-[12.5px] leading-6 text-ink-3">مع أول طلب يُنشأ ملف للعميل برقمه: طلباته وما اشتراه وعنوانه، وتراسله على واتساب بضغطة.</p>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-2xl border border-edge/10 bg-edge/[0.02]">
-          <table className="w-full text-xs">
-            <thead className="border-b border-edge/10 bg-edge/[0.02] text-ink-3">
-              <tr>
-                <th className="p-3.5 text-start font-bold">العميل</th>
-                <th className="p-3.5 text-start font-bold">الموبايل</th>
-                <th className="p-3.5 text-start font-bold">المحافظة</th>
-                <th className="p-3.5 text-start font-bold">الطلبات</th>
-                <th className="p-3.5 text-start font-bold">إجمالي المشتريات</th>
-                <th className="p-3.5 text-start font-bold">آخر طلب</th>
-                <th className="p-3.5 text-start font-bold">التصنيف</th>
-                <th className="p-3.5 text-start font-bold">إجراء</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-edge/[0.04]">
-              {rows.map((c) => {
-                const isVip = c.ordersCount >= 3;
-                const isNew = c.createdAt >= d30;
-                const isAtRisk =
-                  c.ordersCount >= 1 &&
-                  c.lastOrderAt &&
-                  c.lastOrderAt < d60 &&
-                  c.lastOrderAt >= d120;
-                const isChurned =
-                  c.ordersCount >= 1 && c.lastOrderAt && c.lastOrderAt < d120;
+        <>
+          {!query.q ? (
+            <dl className="grid grid-cols-3 gap-2">
+              <Kpi label="اشتروا فعلاً" value={fmtNum(data.buyers)} hint="استلموا طلباً واحداً على الأقل" />
+              <Kpi label="عادوا للشراء" value={repeatRate === null ? "—" : `${fmtNum(repeatRate)}%`} hint="من المشترين استلموا طلبين أو أكثر" />
+              <Kpi label="مشترياتهم" value={formatEgp(data.spentPiasters)} hint="مجموع الطلبات المسلَّمة" />
+            </dl>
+          ) : null}
 
-                return (
-                  <tr key={c.id} className="transition-colors hover:bg-edge/[0.02]">
-                    <td className="p-3.5 font-bold text-ink">
-                      {c.name}
-                      {isVip ? (
-                        <Crown
-                          className="ms-1.5 inline size-3.5 text-amber-700 dark:text-amber-400"
-                          strokeWidth={2.25}
-                          aria-label="VIP"
-                        />
+          <nav aria-label="شرائح العملاء" className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-1 md:mx-0 md:flex-wrap md:px-0">
+            {SEGMENTS.filter((s) => s.key === "all" || s.key === query.segment || data.counts[s.key] > 0).map((s) => {
+              const active = query.segment === s.key;
+              return (
+                <Link
+                  key={s.key}
+                  href={href(query, { segment: s.key, page: 1 })}
+                  scroll={false}
+                  aria-current={active ? "page" : undefined}
+                  title={s.hint}
+                  className={cn(
+                    "inline-flex min-h-10 shrink-0 items-center gap-2 rounded-xl border px-3 text-[12.5px] font-bold transition-colors",
+                    active ? "border-nova bg-nova text-white" : "border-edge/10 text-ink-2 hover:bg-edge/[0.05]"
+                  )}
+                >
+                  {s.label}
+                  <span className={cn("rounded-full px-1.5 text-[11px] tabular-nums", active ? "bg-black/15" : "bg-edge/[0.06]")}>{fmtNum(data.counts[s.key])}</span>
+                </Link>
+              );
+            })}
+          </nav>
+          {query.segment !== "all" ? <p className="-mt-1 text-[12px] text-ink-3">{seg.hint}.</p> : null}
+
+          <form action="/dashboard/customers" method="get" role="search" className="flex flex-col gap-2 sm:flex-row">
+            {query.segment !== "all" ? <input type="hidden" name="segment" value={query.segment} /> : null}
+            <div className="relative flex-1">
+              <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-ink-3" aria-hidden="true" />
+              <input
+                name="q"
+                type="search"
+                defaultValue={query.q}
+                placeholder="اسم العميل أو موبايله (ولو آخر 4 أرقام)"
+                aria-label="بحث في العملاء"
+                enterKeyHint="search"
+                className="min-h-11 w-full rounded-xl border border-edge/10 bg-edge/[0.03] ps-9 pe-3 text-[13px] text-ink outline-none placeholder:text-ink-3 focus:border-nova/50 focus:ring-2 focus:ring-nova/20"
+              />
+            </div>
+            <nav aria-label="الترتيب" className="-mx-4 flex gap-1.5 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+              {SORTS.map((s) => (
+                <Link
+                  key={s.key}
+                  href={href(query, { sort: s.key, page: 1 })}
+                  scroll={false}
+                  aria-current={query.sort === s.key ? "page" : undefined}
+                  className={cn(
+                    "inline-flex min-h-11 shrink-0 items-center rounded-xl border px-3 text-[12px] font-bold transition-colors",
+                    query.sort === s.key ? "border-nova/40 bg-nova/12 text-nova-2" : "border-edge/10 text-ink-3 hover:bg-edge/[0.05] hover:text-ink"
+                  )}
+                >
+                  {s.label}
+                </Link>
+              ))}
+            </nav>
+          </form>
+
+          {data.rows.length ? (
+            <>
+              <div className="dash-card hidden overflow-hidden md:block">
+                <table className="w-full text-[12.5px]">
+                  <caption className="sr-only">العملاء</caption>
+                  <thead className="border-b border-edge/[0.07] text-[11.5px] text-ink-3">
+                    <tr>
+                      <th scope="col" className="p-3 text-start font-bold">العميل</th>
+                      <th scope="col" className="p-3 text-start font-bold">الطلبات</th>
+                      <th scope="col" className="p-3 text-end font-bold">اشترى بـ</th>
+                      <th scope="col" className="p-3 text-start font-bold">آخر طلب</th>
+                      <th scope="col" className="w-14 p-3">
+                        <span className="sr-only">واتساب</span>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-edge/[0.05]">
+                    {data.rows.map((c) => {
+                      const wa = waLink(c.phone);
+                      return (
+                        <tr key={c.id} className="transition-colors hover:bg-edge/[0.025]">
+                          <td className="p-3">
+                            <Link href={`/dashboard/customers/${c.id}`} className="font-black text-ink hover:text-nova-2">
+                              {c.name}
+                            </Link>
+                            <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11.5px] text-ink-3">
+                              <span dir="ltr" className="tabular-nums">{prettyPhone(c.phone)}</span>
+                              {c.governorate ? <span>{governorateName(c.governorate)}</span> : null}
+                              <Tags c={c} />
+                            </p>
+                          </td>
+                          <td className="p-3 text-ink-2">
+                            <Purchases c={c} />
+                          </td>
+                          <td className="p-3 text-end font-black tabular-nums text-ink">{c.spentPiasters ? formatEgp(c.spentPiasters) : <span className="font-normal text-ink-3">—</span>}</td>
+                          <td className="p-3 text-ink-2">{lastSeen(c.lastOrderAt)}</td>
+                          <td className="p-3">
+                            {wa ? (
+                              <a href={wa} target="_blank" rel="noopener noreferrer" aria-label={`واتساب ${c.name}`} title="واتساب" className="grid size-9 place-items-center rounded-lg border border-ok/25 text-ok transition-colors hover:bg-ok/10">
+                                <MessageCircle className="size-4" aria-hidden="true" />
+                              </a>
+                            ) : null}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              <ul className="space-y-2 md:hidden">
+                {data.rows.map((c) => {
+                  const wa = waLink(c.phone);
+                  return (
+                    <li key={c.id} className="dash-card flex items-start gap-3 p-3.5">
+                      <Link href={`/dashboard/customers/${c.id}`} className="min-w-0 flex-1">
+                        <p className="flex items-center justify-between gap-2">
+                          <span className="truncate text-[14px] font-black text-ink">{c.name}</span>
+                          <span className="shrink-0 text-[11.5px] text-ink-3">{lastSeen(c.lastOrderAt)}</span>
+                        </p>
+                        <p className="mt-0.5 text-[12px] text-ink-3" dir="ltr">
+                          <span className="tabular-nums">{prettyPhone(c.phone)}</span>
+                        </p>
+                        <p className="mt-1.5 flex flex-wrap items-center justify-between gap-2 text-[12px] text-ink-2">
+                          <Purchases c={c} />
+                          {c.spentPiasters ? <b className="tabular-nums text-ink">{formatEgp(c.spentPiasters)}</b> : null}
+                        </p>
+                        <div className="mt-1.5">
+                          <Tags c={c} />
+                        </div>
+                      </Link>
+                      {wa ? (
+                        <a href={wa} target="_blank" rel="noopener noreferrer" aria-label={`واتساب ${c.name}`} className="grid size-11 shrink-0 place-items-center rounded-xl border border-ok/25 text-ok">
+                          <MessageCircle className="size-5" aria-hidden="true" />
+                        </a>
                       ) : null}
-                    </td>
-                    <td
-                      className="p-3.5 font-mono text-ink-2"
-                      dir="ltr"
-                    >
-                      <a href={`tel:${c.phone}`} className="hover:underline">
-                        {c.phone}
-                      </a>
-                    </td>
-                    <td className="p-3.5 text-ink">
-                      {c.governorate ? governorateName(c.governorate) : "—"}
-                    </td>
-                    <td className="p-3.5 font-mono font-bold text-ink">
-                      {c.ordersCount}
-                    </td>
-                    <td className="p-3.5 font-mono font-black text-emerald-600 dark:text-emerald-300">
-                      {formatEgp(c.totalSpentPiasters)}
-                    </td>
-                    <td className="p-3.5 text-ink-3">
-                      {c.lastOrderAt
-                        ? new Date(c.lastOrderAt).toLocaleDateString("ar-EG")
-                        : "—"}
-                    </td>
-                    <td className="p-3.5">
-                      {isVip ? (
-                        <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 px-2 py-0.5 text-[10.5px] font-black text-amber-700 dark:text-amber-300">
-                          <Crown className="size-2.5" strokeWidth={2.5} />
-                          VIP
-                        </span>
-                      ) : isChurned ? (
-                        <span className="rounded-md bg-ink-3/15 px-2 py-0.5 text-[10.5px] font-black text-ink-2">
-                          فُقد
-                        </span>
-                      ) : isAtRisk ? (
-                        <span className="rounded-md bg-orange-500/15 px-2 py-0.5 text-[10.5px] font-black text-orange-600 dark:text-orange-300">
-                          معرض للفقدان
-                        </span>
-                      ) : isNew ? (
-                        <span className="rounded-md bg-blue-500/15 px-2 py-0.5 text-[10.5px] font-black text-blue-300">
-                          جديد
-                        </span>
-                      ) : (
-                        <span className="rounded-md bg-edge/5 px-2 py-0.5 text-[10.5px] font-black text-ink-3">
-                          نشط
-                        </span>
-                      )}
-                    </td>
-                    <td className="p-3.5">
-                      <a
-                        href={`https://wa.me/2${c.phone.replace(/\D/g, "")}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex h-8 items-center gap-1 rounded-lg bg-[#25D366] px-2.5 text-[10.5px] font-black text-ink"
-                      >
-                        <Send className="size-2.5" strokeWidth={2.5} />
-                        واتساب
-                      </a>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                    </li>
+                  );
+                })}
+              </ul>
+
+              {data.pages > 1 ? (
+                <nav aria-label="صفحات العملاء" className="flex items-center justify-between gap-3 pt-1">
+                  <PageLink disabled={query.page <= 1} href={href(query, { page: query.page - 1 })} label="السابقة" dir="prev" />
+                  <span className="text-[12px] font-bold tabular-nums text-ink-3">
+                    صفحة {fmtNum(query.page)} من {fmtNum(data.pages)}
+                  </span>
+                  <PageLink disabled={query.page >= data.pages} href={href(query, { page: query.page + 1 })} label="التالية" dir="next" />
+                </nav>
+              ) : null}
+            </>
+          ) : (
+            <div className="dash-card flex flex-col items-center gap-2 px-6 py-14 text-center">
+              <SearchX className="size-8 text-ink-3" strokeWidth={1.75} aria-hidden="true" />
+              <p className="text-[14px] font-black text-ink">لا عملاء يطابقون هذا الاختيار</p>
+              <p className="max-w-sm text-[12.5px] leading-6 text-ink-3">جرّب جزءاً من الاسم أو آخر 4 أرقام من الموبايل، أو اعرض كل العملاء.</p>
+              <Link href="/dashboard/customers" className="mt-1 inline-flex min-h-11 items-center rounded-xl border border-edge/10 px-4 text-[12.5px] font-bold text-ink-2 hover:bg-edge/5">
+                عرض كل العملاء
+              </Link>
+            </div>
+          )}
+        </>
       )}
     </div>
+  );
+}
+
+function Kpi({ label, value, hint }: { label: string; value: string; hint: string }) {
+  return (
+    <div className="dash-card p-3 sm:p-4" title={hint}>
+      <dt className="text-[11.5px] font-bold text-ink-3">{label}</dt>
+      <dd className="mt-1 truncate text-[17px] font-black tabular-nums text-ink sm:text-[20px]">{value}</dd>
+      <dd className="mt-0.5 hidden text-[11px] leading-5 text-ink-3 sm:block">{hint}</dd>
+    </div>
+  );
+}
+
+function PageLink({ href, label, dir, disabled }: { href: string; label: string; dir: "prev" | "next"; disabled: boolean }) {
+  const Icon = dir === "prev" ? ChevronRight : ChevronLeft;
+  const cls = "inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-edge/10 px-4 text-[12.5px] font-bold";
+  const body = (
+    <>
+      {dir === "prev" ? <Icon className="size-4" aria-hidden="true" /> : null}
+      {label}
+      {dir === "next" ? <Icon className="size-4" aria-hidden="true" /> : null}
+    </>
+  );
+  if (disabled)
+    return (
+      <span className={cn(cls, "text-ink-3/50")} aria-disabled="true">
+        {body}
+      </span>
+    );
+  return (
+    <Link href={href} className={cn(cls, "text-ink-2 transition-colors hover:bg-edge/5 hover:text-ink")}>
+      {body}
+    </Link>
   );
 }

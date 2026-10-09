@@ -1,411 +1,361 @@
-// dashboard/orders/[id]/page.tsx — تفاصيل الطلب (v3).
-//
-// التعديلات الجذرية (موجة 3):
-//  1) Real-time status updates من Pusher.
-//  2) Payment verification card مع AI check.
-//  3) Quick actions (WhatsApp/Invoice/Refund).
-//  4) Full timeline.
+// dashboard/orders/[id]/page.tsx — تفاصيل الطلب: الحالة وخطوتها التالية، ومراجعة التحويل، والأصناف والمبالغ
+// (بما فيها رسوم التحصيل)، والعميل وسجله مع المتجر، وبيانات الشحن للنسخ، ورسائل واتساب جاهزة، وسجل الطلب.
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
-import { and, eq } from "drizzle-orm";
-import {
-  Printer,
-  MessageCircle,
-  ArrowRight,
-  User,
-  Package,
-  Wallet,
-  CheckCircle2,
-  XCircle,
-  ExternalLink,
-  MapPin,
-  Phone,
-  Mail,
-  Clock,
-  FileText,
-  Copy,
-} from "lucide-react";
+import { and, eq, ne, sql } from "drizzle-orm";
+import { ArrowRight, Mail, MapPin, Package, Phone, Printer } from "lucide-react";
 import { getMerchantSession } from "@/server/auth";
 import { getTenantDb } from "@/db/tenant";
-import { orders, orderItems, payments } from "@/db/schema/commerce";
+import { orders, orderItems, payments } from "@/db/schema";
 import { formatEgp } from "@/lib/money";
-import { GOVERNORATES } from "@/lib/egypt";
-import { OrderActions } from "@/components/dashboard/OrderActions";
-import { OrderRealtimeWatcher } from "@/components/dashboard/OrderRealtimeWatcher";
-import { setPaymentStatusAction } from "@/server/actions/orders";
+import { arCount, fmtNum, NOUN } from "@/lib/format";
+import { governorateName } from "@/lib/egypt";
+import { cn } from "@/lib/utils";
+import { collectNote, shippingLabelText, type MessageOrder } from "@/lib/order-messages";
+import { reviewToken } from "@/lib/order-access";
+import { storeUrl } from "@/lib/utils";
+import {
+  orderStatusLabel,
+  orderStatusTone,
+  paymentMethodLabel,
+  paymentStatusLabel,
+  PAYMENT_STATUS,
+  TONE_CHIP,
+  TONE_TEXT,
+  type OrderStatus,
+} from "@/lib/order-status";
+import { OrderStatusPanel } from "@/components/dashboard/order/OrderStatusPanel";
+import { CopyButton, PaymentReview, ShippingMetaForm, WhatsAppMessages } from "@/components/dashboard/order/OrderParts";
 
 export const dynamic = "force-dynamic";
 
-function govName(code: string): string {
-  return GOVERNORATES.find((g) => g.code === code)?.name ?? code;
-}
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const dateTime = new Intl.DateTimeFormat("ar-EG-u-nu-latn", {
+  dateStyle: "medium",
+  timeStyle: "short",
+  timeZone: "Africa/Cairo",
+});
 
-const STATUS_LABEL: Record<string, string> = {
-  new: "جديد",
-  confirmed: "مؤكد",
-  preparing: "قيد التجهيز",
-  shipped: "تم الشحن",
-  delivered: "تم التسليم",
-  cancelled: "ملغي",
-  returned: "مُرتجع",
-};
-
-export default async function OrderDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const session = await getMerchantSession();
-  if (!session || !session.storeId) redirect("/dashboard");
-  const db = await getTenantDb(session.storeId!);
+  if (!session?.storeId || !UUID.test(id)) return { title: "الطلب" };
+  const db = await getTenantDb(session.storeId);
+  const [o] = await db
+    .select({ code: orders.code })
+    .from(orders)
+    .where(and(eq(orders.id, id), eq(orders.storeId, session.storeId)))
+    .limit(1);
+  return { title: o ? `طلب ${o.code}` : "الطلب" };
+}
 
-  const store = session.store!;
+export default async function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const session = await getMerchantSession();
+  if (!session?.storeId || !session.store) redirect("/dashboard");
+  if (!UUID.test(id)) notFound();
+  const store = session.store;
+  const db = await getTenantDb(store.id);
 
   const [o] = await db
     .select()
     .from(orders)
     .where(and(eq(orders.id, id), eq(orders.storeId, store.id)))
     .limit(1);
-
   if (!o) notFound();
 
-  const [items, [paymentRecord]] = await Promise.all([
-    db.select().from(orderItems).where(eq(orderItems.orderId, id)),
-    db.select().from(payments).where(eq(payments.orderId, id)).limit(1),
+  const [items, [paymentRecord], history] = await Promise.all([
+    db
+      .select()
+      .from(orderItems)
+      .where(and(eq(orderItems.orderId, id), eq(orderItems.storeId, store.id))),
+    db
+      .select()
+      .from(payments)
+      .where(and(eq(payments.orderId, id), eq(payments.storeId, store.id)))
+      .limit(1),
+    db
+      .select({
+        status: orders.status,
+        n: sql<number>`count(*)`.mapWith(Number),
+      })
+      .from(orders)
+      .where(and(eq(orders.storeId, store.id), eq(orders.customerPhone, o.customerPhone), ne(orders.id, o.id), eq(orders.isTest, false)))
+      .groupBy(orders.status),
   ]);
 
-  const screenshotUrl = o.transferScreenshotUrl ?? paymentRecord?.screenshotUrl;
-  const senderPhone = o.transferSenderPhone ?? paymentRecord?.senderPhone;
-  const isElectronic =
-    o.paymentMethod === "vodafone_cash" || o.paymentMethod === "instapay";
-
-  const waMsg = `أهلاً ${o.customerName}, بخصوص طلبك ${o.code} من متجر ${store.name} بقيمة ${formatEgp(o.totalPiasters)}.`;
+  const prev = Object.fromEntries(history.map((h) => [h.status, h.n])) as Partial<Record<OrderStatus, number>>;
+  const prevTotal = history.reduce((a, h) => a + h.n, 0);
+  const isElectronic = o.paymentMethod === "vodafone_cash" || o.paymentMethod === "instapay";
+  const msgOrder: MessageOrder = {
+    code: o.code,
+    customerName: o.customerName,
+    customerPhone: o.customerPhone,
+    customerAltPhone: o.customerAltPhone,
+    governorate: o.governorate,
+    city: o.city,
+    address: o.address,
+    landmark: o.landmark,
+    totalPiasters: o.totalPiasters,
+    paymentMethod: o.paymentMethod,
+    paymentStatus: o.paymentStatus,
+    courierName: o.courierName,
+    trackingNumber: o.trackingNumber,
+    reviewUrl: o.status === "delivered" ? storeUrl(store.subdomain, `/review?o=${encodeURIComponent(o.code)}&t=${reviewToken(store.id, o.id)}`) : null,
+  };
+  const collect = collectNote(o);
+  const timeline = [...o.statusHistory].reverse();
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6" dir="rtl">
-      <OrderRealtimeWatcher storeId={o.storeId} orderCode={o.code} />
-
-      <header className="flex flex-wrap items-center justify-between gap-4 border-b border-edge/10 pb-4">
-        <div className="flex items-center gap-3">
-          <Link
-            href="/dashboard/orders"
-            className="grid size-10 place-items-center rounded-xl border border-edge/10 bg-edge/[0.03] text-ink-2 transition-colors hover:bg-edge/[0.06]"
-            aria-label="رجوع"
-          >
-            <ArrowRight className="size-4" strokeWidth={2.25} aria-hidden="true" />
-          </Link>
-          <div>
-            <h1 className="text-xl font-black text-ink">
-              طلب <span className="font-mono">{o.code}</span>
+    <div className="mx-auto max-w-6xl space-y-5">
+      <header className="space-y-3">
+        <Link
+          href="/dashboard/orders"
+          className="inline-flex min-h-9 items-center gap-1.5 text-[12.5px] font-bold text-ink-3 transition-colors hover:text-ink"
+        >
+          <ArrowRight className="size-4" aria-hidden="true" />
+          كل الطلبات
+        </Link>
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="flex flex-wrap items-center gap-2 text-2xl font-black text-ink">
+              طلب <span dir="ltr">{o.code}</span>
+              <span className={cn("rounded-full px-2.5 py-1 text-[12px] font-black", TONE_CHIP[orderStatusTone(o.status)])}>
+                {orderStatusLabel(o.status)}
+              </span>
+              {o.isTest ? <span className="rounded-full bg-warn/12 px-2.5 py-1 text-[12px] font-black text-warn">طلب تجريبي</span> : null}
             </h1>
-            <p className="mt-0.5 text-[11px] text-ink-3">
-              {new Date(o.createdAt).toLocaleString("ar-EG", {
-                timeZone: "Africa/Cairo",
-              })}
+            <p className="mt-1 text-[12.5px] text-ink-3">
+              {dateTime.format(o.createdAt)} · {paymentMethodLabel(o.paymentMethod)} ·{" "}
+              <span className={cn("font-bold", TONE_TEXT[PAYMENT_STATUS[o.paymentStatus as keyof typeof PAYMENT_STATUS]?.tone ?? "muted"])}>
+                {paymentStatusLabel(o.paymentStatus)}
+              </span>
             </p>
           </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <a
-            href={`https://wa.me/2${o.customerPhone.replace(/\D/g, "")}?text=${encodeURIComponent(waMsg)}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-[#25D366] px-3.5 text-xs font-black text-ink"
-          >
-            <MessageCircle className="size-3.5" strokeWidth={2.25} aria-hidden="true" />
-            <span>واتساب</span>
-          </a>
-          <Link
-            href={`/print/invoices?ids=${id}`}
-            target="_blank"
-            className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-edge/10 bg-edge/[0.03] px-3.5 text-xs font-bold text-ink transition-colors hover:bg-edge/[0.06]"
-          >
-            <Printer className="size-3.5" strokeWidth={2.25} aria-hidden="true" />
-            <span>فاتورة</span>
-          </Link>
+          <div className="flex flex-wrap items-center gap-2">
+            <WhatsAppMessages order={msgOrder} status={o.status} storeName={store.name} />
+            <Link
+              href={`/print/invoices?ids=${o.id}`}
+              target="_blank"
+              className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-edge/10 px-3.5 text-[12.5px] font-bold text-ink-2 transition-colors hover:bg-edge/5 hover:text-ink"
+            >
+              <Printer className="size-4" aria-hidden="true" />
+              الفاتورة
+            </Link>
+          </div>
         </div>
       </header>
 
-      {/* Payment verification card */}
-      {isElectronic ? (
-        <section
-          className={
-            o.paymentStatus === "confirmed"
-              ? "rounded-2xl border border-emerald-400/30 bg-emerald-500/[0.06] p-5"
-              : o.paymentStatus === "rejected"
-              ? "rounded-2xl border border-rose-400/30 bg-rose-500/[0.06] p-5"
-              : "rounded-2xl border border-amber-400/30 bg-amber-500/[0.06] p-5"
-          }
-        >
-          <header className="mb-4 flex items-center justify-between border-b border-edge/5 pb-3">
-            <div className="flex items-center gap-2">
-              <Wallet className="size-5 text-ink" strokeWidth={2} aria-hidden="true" />
-              <h2 className="text-sm font-black text-ink">
-                إيصال التحويل (
-                {o.paymentMethod === "vodafone_cash"
-                  ? "فودافون كاش"
-                  : "إنستاباي"}
-                )
-              </h2>
+      {/* على الموبايل: الحالة أولاً ثم الدفع والأصناف؛ وعلى الشاشات الكبيرة عمودان (contents يذيب الغلافين). */}
+      <div className="flex flex-col gap-5 lg:grid lg:grid-cols-[minmax(0,1fr)_22rem]">
+        <div className="contents lg:block lg:space-y-5">
+          {isElectronic ? (
+            <div className="order-2 lg:order-none">
+              <PaymentReview
+                orderId={o.id}
+                method={o.paymentMethod}
+                paymentStatus={o.paymentStatus}
+                totalPiasters={o.totalPiasters}
+                senderPhone={o.transferSenderPhone ?? paymentRecord?.senderPhone ?? null}
+                screenshotUrl={o.transferScreenshotUrl ?? paymentRecord?.screenshotUrl ?? null}
+                order={msgOrder}
+                storeName={store.name}
+              />
             </div>
-            <span
-              className={
-                o.paymentStatus === "confirmed"
-                  ? "rounded-full bg-emerald-500 px-3 py-1 text-[11px] font-black text-white"
-                  : o.paymentStatus === "rejected"
-                  ? "rounded-full bg-rose-500 px-3 py-1 text-[11px] font-black text-white"
-                  : "rounded-full bg-amber-500 px-3 py-1 text-[11px] font-black text-space-2"
-              }
-            >
-              {o.paymentStatus === "confirmed"
-                ? "تم تأكيد الاستلام"
-                : o.paymentStatus === "rejected"
-                ? "مرفوض"
-                : "بانتظار المراجعة"}
-            </span>
-          </header>
+          ) : null}
 
-          <div className="grid gap-5 sm:grid-cols-[140px_1fr]">
-            {screenshotUrl ? (
-              <a
-                href={screenshotUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="group relative block aspect-square w-36 overflow-hidden rounded-2xl border border-edge/10"
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={screenshotUrl}
-                  alt="إيصال التحويل"
-                  className="size-full object-cover transition-transform group-hover:scale-105"
-                />
-                <span className="absolute bottom-1.5 end-1.5 grid size-6 place-items-center rounded-md bg-black/70 text-white">
-                  <ExternalLink className="size-3" strokeWidth={2.25} aria-hidden="true" />
-                </span>
-              </a>
-            ) : (
-              <div className="grid aspect-square w-36 place-items-center rounded-2xl border-2 border-dashed border-amber-400/40 bg-amber-500/[0.06] p-3 text-center text-[11px] font-bold text-amber-700 dark:text-amber-200">
-                لم يُرفَق إيصال
-              </div>
-            )}
-
-            <div className="space-y-2 text-xs">
-              <p className="text-ink-2">
-                <b className="text-ink">المبلغ المطلوب:</b>{" "}
-                <span className="font-mono font-black text-emerald-600 dark:text-emerald-300">
-                  {formatEgp(o.totalPiasters)}
-                </span>
-              </p>
-              <p className="text-ink-2">
-                <b className="text-ink">الرقم الذي حوّل منه:</b>{" "}
-                <span
-                  dir="ltr"
-                  className="select-all font-mono font-bold text-ink"
-                >
-                  {senderPhone ?? "غير مسجل"}
-                </span>
-              </p>
-
-              {o.paymentStatus === "pending" ||
-              o.paymentStatus === "under_review" ? (
-                <div className="flex flex-wrap gap-2 pt-2">
-                  <form
-                    action={setPaymentStatusAction.bind(
-                      null,
-                      o.id,
-                      "confirmed",
-                      "تم التحقق يدوياً"
-                    )}
-                  >
-                    <button
-                      type="submit"
-                      className="inline-flex h-11 items-center gap-1.5 rounded-xl bg-emerald-600 px-4 text-xs font-black text-white transition-colors hover:bg-emerald-700"
-                    >
-                      <CheckCircle2 className="size-3.5" strokeWidth={2.25} aria-hidden="true" />
-                      تأكيد الاستلام
-                    </button>
-                  </form>
-                  <form
-                    action={setPaymentStatusAction.bind(
-                      null,
-                      o.id,
-                      "rejected",
-                      "المبلغ لم يصل"
-                    )}
-                  >
-                    <button
-                      type="submit"
-                      className="inline-flex h-11 items-center gap-1.5 rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 text-xs font-bold text-rose-600 dark:text-rose-300 transition-colors hover:bg-rose-500/20"
-                    >
-                      <XCircle className="size-3.5" strokeWidth={2.25} aria-hidden="true" />
-                      رفض
-                    </button>
-                  </form>
-                </div>
-              ) : null}
-            </div>
-          </div>
-        </section>
-      ) : null}
-
-      {/* Two columns */}
-      <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
-        <div className="space-y-5">
-          {/* Items */}
-          <section className="rounded-2xl border border-edge/10 bg-edge/[0.02] p-5">
-            <h2 className="mb-4 flex items-center gap-2 border-b border-edge/5 pb-3 text-sm font-black text-ink">
-              <Package className="size-4" strokeWidth={2} aria-hidden="true" />
-              المنتجات ({items.length})
+          <section aria-labelledby="items-title" className="dash-card order-3 p-4 sm:p-5 lg:order-none">
+            <h2 id="items-title" className="mb-3 text-[14px] font-black text-ink">
+              الأصناف ({fmtNum(items.reduce((a, i) => a + i.quantity, 0))} قطعة)
             </h2>
-
-            <ul className="divide-y divide-edge/5">
+            <ul className="divide-y divide-edge/[0.06]">
               {items.map((i) => (
                 <li key={i.id} className="flex items-center gap-3 py-3">
                   {i.imageUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={i.imageUrl}
-                      alt=""
-                      className="size-14 shrink-0 rounded-xl border border-edge/10 object-cover"
-                    />
+                    <img src={i.imageUrl} alt="" className="size-14 shrink-0 rounded-xl border border-edge/10 object-cover" />
                   ) : (
-                    <div className="grid size-14 shrink-0 place-items-center rounded-xl border border-edge/10 bg-edge/[0.03] text-ink-3">
+                    <span className="grid size-14 shrink-0 place-items-center rounded-xl border border-edge/10 bg-edge/[0.03] text-ink-3">
                       <Package className="size-5" strokeWidth={1.75} aria-hidden="true" />
-                    </div>
+                    </span>
                   )}
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-xs font-bold text-ink">
-                      {i.name}
-                    </p>
-                    {i.variantLabel ? (
-                      <p className="mt-0.5 text-[11px] text-ink-3">
-                        {i.variantLabel}
-                      </p>
-                    ) : null}
+                    {i.productId ? (
+                      <Link href={`/dashboard/products/${i.productId}`} className="block truncate text-[13px] font-bold text-ink hover:text-nova-2">
+                        {i.name}
+                      </Link>
+                    ) : (
+                      <p className="truncate text-[13px] font-bold text-ink">{i.name}</p>
+                    )}
+                    {i.variantLabel ? <p className="mt-0.5 text-[12px] text-ink-3">{i.variantLabel}</p> : null}
                   </div>
-                  <div className="text-end">
-                    <p className="font-mono text-xs font-black text-ink">
-                      {formatEgp(i.totalPiasters)}
-                    </p>
-                    <p className="mt-0.5 font-mono text-[10.5px] text-ink-3">
-                      {i.quantity} × {formatEgp(i.unitPiasters)}
+                  <div className="shrink-0 text-end">
+                    <p className="text-[13px] font-black tabular-nums text-ink">{formatEgp(i.totalPiasters)}</p>
+                    <p className="mt-0.5 text-[11.5px] tabular-nums text-ink-3">
+                      {fmtNum(i.quantity)} × {formatEgp(i.unitPiasters)}
                     </p>
                   </div>
                 </li>
               ))}
             </ul>
 
-            <dl className="mt-4 space-y-2 border-t border-edge/5 pt-4 text-xs">
-              <div className="flex justify-between text-ink-3">
-                <dt>مجموع المنتجات</dt>
-                <dd className="font-mono font-bold text-ink">
-                  {formatEgp(o.subtotalPiasters)}
-                </dd>
-              </div>
-              <div className="flex justify-between text-ink-3">
-                <dt>التوصيل</dt>
-                <dd className="font-mono font-bold text-ink">
-                  {formatEgp(o.shippingPiasters)}
-                </dd>
-              </div>
+            <dl className="mt-3 space-y-2 border-t border-edge/[0.06] pt-3 text-[13px]">
+              <Row label="المنتجات" value={formatEgp(o.subtotalPiasters)} />
+              <Row label="الشحن" value={o.shippingPiasters > 0 ? formatEgp(o.shippingPiasters) : "مجاني"} />
+              {o.codFeePiasters > 0 ? <Row label="رسوم الدفع عند الاستلام" value={formatEgp(o.codFeePiasters)} /> : null}
               {o.discountPiasters > 0 ? (
-                <div className="flex justify-between font-bold text-emerald-600 dark:text-emerald-300">
-                  <dt>
-                    الخصم {o.discountCode ? `(${o.discountCode})` : ""}
-                  </dt>
-                  <dd className="font-mono">− {formatEgp(o.discountPiasters)}</dd>
-                </div>
+                <Row
+                  label={`الخصم${o.discountCode ? ` (${o.discountCode})` : ""}`}
+                  value={`− ${formatEgp(o.discountPiasters)}`}
+                  className="text-ok"
+                />
               ) : null}
-              <div className="mt-2 flex justify-between border-t border-edge/5 pt-3 text-sm font-black">
-                <dt className="text-ink">الإجمالي</dt>
-                <dd className="font-mono text-base text-emerald-600 dark:text-emerald-300">
-                  {formatEgp(o.totalPiasters)}
-                </dd>
+              <div className="flex items-baseline justify-between border-t border-edge/[0.06] pt-2.5">
+                <dt className="text-[14px] font-black text-ink">الإجمالي</dt>
+                <dd className="text-[18px] font-black tabular-nums text-ink">{formatEgp(o.totalPiasters)}</dd>
               </div>
+              <Row label="يحصّله المندوب" value={collect.text} className={cn("font-black", TONE_TEXT[collect.tone])} />
             </dl>
           </section>
 
-          {/* Customer */}
-          <section className="rounded-2xl border border-edge/10 bg-edge/[0.02] p-5">
-            <h2 className="mb-4 flex items-center gap-2 border-b border-edge/5 pb-3 text-sm font-black text-ink">
-              <User className="size-4" strokeWidth={2} aria-hidden="true" />
-              بيانات العميل والتوصيل
-            </h2>
-            <dl className="grid gap-3 rounded-xl border border-edge/5 bg-edge/[0.02] p-4 text-xs sm:grid-cols-2">
-              <div>
-                <dt className="text-[11px] text-ink-3">اسم العميل</dt>
-                <dd className="mt-0.5 font-bold text-ink">
-                  {o.customerName}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-[11px] text-ink-3">رقم الموبايل</dt>
-                <dd
-                  className="mt-0.5 flex items-center gap-1.5 font-mono font-bold text-ink"
-                  dir="ltr"
-                >
-                  <Phone className="size-3 text-ink-3" strokeWidth={2} aria-hidden="true" />
-                  {o.customerPhone}
-                </dd>
-              </div>
-              <div className="sm:col-span-2">
-                <dt className="text-[11px] text-ink-3">المحافظة والعنوان</dt>
-                <dd className="mt-0.5 flex items-start gap-1.5 font-bold text-ink">
-                  <MapPin className="mt-0.5 size-3.5 shrink-0 text-nova-2" strokeWidth={2} aria-hidden="true" />
-                  <span>
-                    {govName(o.governorate)}
-                    {o.city ? ` · ${o.city}` : ""}
-                    <br />
-                    <span className="text-[11px] font-medium text-ink-2">
-                      {o.address}
-                    </span>
-                  </span>
-                </dd>
-              </div>
-              {o.customerEmail ? (
-                <div className="sm:col-span-2">
-                  <dt className="text-[11px] text-ink-3">البريد الإلكتروني</dt>
-                  <dd
-                    className="mt-0.5 flex items-center gap-1.5 font-mono font-bold text-ink"
+          <section aria-labelledby="customer-title" className="dash-card order-4 p-4 sm:p-5 lg:order-none">
+            <header className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <h2 id="customer-title" className="text-[14px] font-black text-ink">
+                العميل والتوصيل
+              </h2>
+              <CopyButton text={shippingLabelText(msgOrder, store.name)} label="انسخ بيانات الشحن" />
+            </header>
+            <dl className="grid gap-3 text-[13px] sm:grid-cols-2">
+              <Field label="الاسم">
+                {o.customerId ? (
+                  <Link href={`/dashboard/customers/${o.customerId}`} className="font-bold text-ink hover:text-nova-2" title="ملف العميل وطلباته">
+                    {o.customerName}
+                  </Link>
+                ) : (
+                  o.customerName
+                )}
+              </Field>
+              <Field label="الموبايل">
+                <span className="flex flex-wrap items-center gap-2">
+                  <a
+                    href={`tel:${o.customerPhone}`}
                     dir="ltr"
+                    className="inline-flex items-center gap-1.5 font-bold tabular-nums text-ink hover:text-nova-2"
                   >
-                    <Mail className="size-3 text-ink-3" strokeWidth={2} aria-hidden="true" />
+                    <Phone className="size-3.5 text-ink-3" aria-hidden="true" />
+                    {o.customerPhone}
+                  </a>
+                  {o.customerAltPhone ? (
+                    <a href={`tel:${o.customerAltPhone}`} dir="ltr" className="text-[12px] tabular-nums text-ink-3 hover:text-ink">
+                      {o.customerAltPhone}
+                    </a>
+                  ) : null}
+                </span>
+              </Field>
+              <Field label="العنوان" wide>
+                <span className="flex items-start gap-1.5">
+                  <MapPin className="mt-0.5 size-4 shrink-0 text-nova-2" aria-hidden="true" />
+                  <span>
+                    <b>{governorateName(o.governorate)}</b>
+                    {o.city ? ` · ${o.city}` : ""}
+                    <span className="mt-0.5 block text-ink-2">{o.address}</span>
+                    {o.landmark ? <span className="mt-0.5 block text-[12px] text-ink-3">علامة مميزة: {o.landmark}</span> : null}
+                  </span>
+                </span>
+              </Field>
+              {o.customerEmail ? (
+                <Field label="البريد" wide>
+                  <a href={`mailto:${o.customerEmail}`} dir="ltr" className="inline-flex items-center gap-1.5 text-ink hover:text-nova-2">
+                    <Mail className="size-3.5 text-ink-3" aria-hidden="true" />
                     {o.customerEmail}
-                  </dd>
-                </div>
+                  </a>
+                </Field>
               ) : null}
               {o.customerNotes ? (
-                <div className="rounded-lg border border-amber-400/20 bg-amber-500/[0.06] p-3 sm:col-span-2">
-                  <dt className="text-[10.5px] font-bold text-amber-700 dark:text-amber-300">
-                    ملاحظات العميل
-                  </dt>
-                  <dd className="mt-0.5 text-[11px] text-ink">
-                    {o.customerNotes}
-                  </dd>
+                <div className="rounded-xl border border-warn/20 bg-warn/[0.06] p-3 sm:col-span-2">
+                  <dt className="text-[11.5px] font-black text-warn">ملاحظة العميل</dt>
+                  <dd className="mt-1 text-[13px] text-ink">{o.customerNotes}</dd>
                 </div>
               ) : null}
             </dl>
+
+            <div className="mt-4 rounded-xl border border-edge/[0.07] bg-edge/[0.02] p-3 text-[12.5px]">
+              {prevTotal === 0 ? (
+                <p className="text-ink-2">أول طلب لهذا الرقم من متجرك.</p>
+              ) : (
+                <p className="text-ink-2">
+                  طلب من قبل {arCount(prevTotal, NOUN.order)}
+                  {prev.delivered ? <span className="text-ok"> · استلم {fmtNum(prev.delivered)}</span> : null}
+                  {prev.returned ? <span className="font-bold text-bad"> · رفض/أرجع {fmtNum(prev.returned)}</span> : null}
+                  {prev.cancelled ? <span className="text-ink-3"> · أُلغي {fmtNum(prev.cancelled)}</span> : null}
+                  {" · "}
+                  <Link href={`/dashboard/orders?q=${encodeURIComponent(o.customerPhone)}`} className="font-bold text-nova-2 hover:text-ink">
+                    عرض طلباته
+                  </Link>
+                </p>
+              )}
+            </div>
           </section>
         </div>
 
-        {/* Actions sidebar */}
-        <OrderActions
-          order={{
-            id: o.id,
-            status: o.status,
-            paymentStatus: o.paymentStatus,
-            paymentMethod: o.paymentMethod,
-            courierName: o.courierName,
-            trackingNumber: o.trackingNumber,
-            internalNotes: o.internalNotes,
-            history: (o.statusHistory as unknown) as
-              | { status: string; at: string; note?: string }[]
-              | undefined,
-          }}
-        />
+        <aside className="contents lg:block lg:space-y-5">
+          <div className="order-1 lg:order-none">
+            <OrderStatusPanel
+              orderId={o.id}
+              code={o.code}
+              status={o.status}
+              paymentMethod={o.paymentMethod}
+              paymentStatus={o.paymentStatus}
+              totalPiasters={o.totalPiasters}
+              courierName={o.courierName}
+              trackingNumber={o.trackingNumber}
+              internalNotes={o.internalNotes}
+            />
+          </div>
+          <div className="order-5 lg:order-none">
+            <ShippingMetaForm orderId={o.id} courierName={o.courierName} trackingNumber={o.trackingNumber} internalNotes={o.internalNotes} />
+          </div>
+
+          <section aria-labelledby="timeline-title" className="dash-card order-6 p-4 sm:p-5 lg:order-none">
+            <h2 id="timeline-title" className="mb-3 text-[14px] font-black text-ink">
+              سجل الطلب
+            </h2>
+            <ol className="relative space-y-3 border-s border-edge/10 ps-4">
+              {timeline.map((h, i) => (
+                <li key={`${h.at}-${i}`} className="relative">
+                  <span
+                    className={cn("absolute -start-[1.3rem] top-1.5 size-2.5 rounded-full ring-4 ring-space-2", i === 0 ? "bg-nova" : "bg-edge/25")}
+                    aria-hidden="true"
+                  />
+                  <p className="text-[12.5px] font-bold text-ink">{orderStatusLabel(h.status)}</p>
+                  {h.note ? <p className="mt-0.5 text-[12px] leading-5 text-ink-2">{h.note}</p> : null}
+                  <time dateTime={h.at} className="mt-0.5 block text-[11px] text-ink-3">
+                    {dateTime.format(new Date(h.at))}
+                  </time>
+                </li>
+              ))}
+            </ol>
+          </section>
+        </aside>
       </div>
+    </div>
+  );
+}
+
+function Row({ label, value, className }: { label: string; value: string; className?: string }) {
+  return (
+    <div className={cn("flex items-baseline justify-between gap-3 text-ink-2", className)}>
+      <dt>{label}</dt>
+      <dd className="font-bold tabular-nums">{value}</dd>
+    </div>
+  );
+}
+
+function Field({ label, wide, children }: { label: string; wide?: boolean; children: React.ReactNode }) {
+  return (
+    <div className={wide ? "sm:col-span-2" : undefined}>
+      <dt className="text-[11.5px] text-ink-3">{label}</dt>
+      <dd className="mt-0.5 font-bold text-ink">{children}</dd>
     </div>
   );
 }

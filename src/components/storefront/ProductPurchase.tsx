@@ -118,6 +118,17 @@ export function ProductPurchase({ product: p }: { product: PurchaseProduct; paym
     root.dataset.productSlug = p.slug;
   }, [variant, price, stock, out, p.id, p.name, p.images, p.slug, needsVariant]);
 
+  // صورة الاختيار: التركيبة المختارة، أو أول تركيبة توافق ما اختاره العميل حتى الآن (اختيار اللون وحده يكفي)،
+  // فينتقل معرض الصور إليها (ProductGallery يستمع لـ clp:show-image).
+  const selectionImage = useMemo(() => {
+    if (variant?.imageUrl) return variant.imageUrl;
+    if (!sel.some(Boolean)) return null;
+    return p.variants.find((v) => v.imageUrl && v.optionValues.every((val, i) => !sel[i] || val === sel[i]))?.imageUrl ?? null;
+  }, [variant, sel, p.variants]);
+  useEffect(() => {
+    if (selectionImage) window.dispatchEvent(new CustomEvent("clp:show-image", { detail: { url: selectionImage } }));
+  }, [selectionImage]);
+
   // صف الثقة: صياغة التاجر إن كتبها (مفلترة بالحقائق)، وإلا أهم حقائق المتجر الفعلية.
   const trust = useMemo(() => {
     const custom = groundedItems(conversion.productTrustRow.map((r) => ({ ...r, title: r.text })), facts);

@@ -1,9 +1,5 @@
-// dashboard/content/page.tsx — محرر محتوى المتجر (بديل StudioEditor).
-//
-// المزايا:
-//  - Server Component يجلب البيانات أولاً، ثم يمرّرها للـ Client.
-//  - لا iframe، لا templates. تعديل مباشر على Blueprint.
-//  - يفتح المعاينة في تبويب منفصل (لا split view ضيق).
+// dashboard/content — محرر محتوى المتجر: يجلب إعدادات المتجر وأسماء أقسامه ومنتجاته (للاختيار بالاسم) والخطوط
+// المحمّلة فيه، ويمرّرها لـ ContentEditor.
 import { redirect } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { getMerchantSession } from "@/server/auth";
@@ -13,6 +9,7 @@ import { categories, products, storeBlueprints } from "@/db/schema";
 import { defaultBlueprint } from "@/blueprint/defaults";
 import { ContentEditor } from "@/components/dashboard/ContentEditor";
 import { NO_STORE_HREF } from "@/lib/edition";
+import { AVAILABLE_FONTS } from "@/lib/fonts";
 
 export const dynamic = "force-dynamic";
 
@@ -62,6 +59,7 @@ export default async function ContentEditorPage() {
         subdomain={store.subdomain}
         categories={cats}
         products={prods}
+        fonts={AVAILABLE_FONTS}
       />
     </div>
   );

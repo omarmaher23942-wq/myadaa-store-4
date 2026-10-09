@@ -58,7 +58,7 @@ export function AiWriteButton({
     return (
       <Link
         href={INTEGRATIONS_NAV.href}
-        className="inline-flex items-center gap-1.5 rounded-xl border border-amber-400/30 bg-amber-400/10 px-3 py-1.5 text-[11.5px] font-black text-amber-700 dark:text-amber-300"
+        className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-warn/30 bg-warn/10 px-3 text-[11.5px] font-black text-warn"
       >
         <KeyRound className="size-3.5" aria-hidden="true" />
         اربط مفتاح Groq لتفعيل الكتابة الذكية
@@ -76,7 +76,7 @@ export function AiWriteButton({
               onApply(undo);
               setUndo(null);
             }}
-            className="inline-flex items-center gap-1 rounded-xl px-2.5 py-1.5 text-[11.5px] font-bold text-ink-3 transition hover:bg-edge/[0.05] hover:text-ink"
+            className="inline-flex min-h-10 items-center gap-1 rounded-xl px-2.5 text-[11.5px] font-bold text-ink-3 transition hover:bg-edge/[0.05] hover:text-ink"
           >
             <Undo2 className="size-3.5" aria-hidden="true" />
             تراجع
@@ -87,7 +87,7 @@ export function AiWriteButton({
           onClick={() => setOpen((o) => !o)}
           disabled={pending}
           aria-expanded={open}
-          className="group relative inline-flex items-center gap-1.5 overflow-hidden rounded-xl bg-gradient-to-l from-aurora to-nova px-3.5 py-1.5 text-[12px] font-black text-white shadow-lg shadow-aurora/25 transition hover:brightness-110 disabled:opacity-60"
+          className="group relative inline-flex min-h-10 items-center gap-1.5 overflow-hidden rounded-xl bg-gradient-to-l from-aurora to-nova px-3.5 text-[12px] font-black text-white shadow-lg shadow-aurora/25 transition hover:brightness-110 disabled:opacity-60"
         >
           {pending ? <Loader2 className="size-3.5 animate-spin" /> : <Sparkles className="size-3.5" aria-hidden="true" />}
           {pending ? "نكتب الآن..." : "اكتب بالذكاء الاصطناعي"}
@@ -125,7 +125,7 @@ export function AiWriteButton({
                 onClick={generate}
                 disabled={pending}
                 className={cn(
-                  "inline-flex items-center gap-1.5 rounded-xl bg-nova px-3.5 py-2 text-[12px] font-black text-white transition hover:brightness-110 disabled:opacity-60"
+                  "inline-flex min-h-10 items-center gap-1.5 rounded-xl bg-nova px-3.5 text-[12px] font-black text-white transition hover:brightness-110 disabled:opacity-60"
                 )}
               >
                 {pending ? <Loader2 className="size-3.5 animate-spin" /> : <Wand2 className="size-3.5" aria-hidden="true" />}

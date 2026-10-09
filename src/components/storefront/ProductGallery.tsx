@@ -115,6 +115,17 @@ export function ProductGallery({
     };
   }, [lightbox, go]);
 
+  // اختيار لون له صورة خاصة في صفحة المنتج (ProductPurchase) ينقل المعرض إليها.
+  useEffect(() => {
+    const onShow = (e: Event) => {
+      const url = (e as CustomEvent<{ url?: string }>).detail?.url;
+      const i = url ? images.findIndex((im) => im.url === url) : -1;
+      if (i >= 0) setIdx(i);
+    };
+    window.addEventListener("clp:show-image", onShow);
+    return () => window.removeEventListener("clp:show-image", onShow);
+  }, [images]);
+
   useEffect(() => {
     const strip = stripRef.current;
     if (!strip) return;

@@ -23,7 +23,7 @@ export async function generateMetadata({
   const { store: sub, slug } = await params;
   const store = await getStoreBySubdomain(sub);
   const cat = store ? await getCategoryBySlug(store.id, decodeURIComponent(slug)) : null;
-  if (!cat) return { robots: { index: false } };
+  if (!cat || !cat.isVisible) return { robots: { index: false } };
   const path = `/c/${encodeURIComponent(cat.slug)}`;
   return {
     title: cat.name,
@@ -45,7 +45,8 @@ export default async function CategoryPage({
 
   const store = await requireStore(sub);
   const cat = await getCategoryBySlug(store.id, decodeURIComponent(slug));
-  if (!cat) notFound();
+  // القسم الذي أخفاه التاجر لا تُفتح صفحته (منتجاته تبقى ظاهرة في المتجر).
+  if (!cat || !cat.isVisible) notFound();
 
   const rows = await listProductsByCategory(
     store.id,

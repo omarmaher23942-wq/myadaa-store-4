@@ -31,7 +31,7 @@ export function CountdownOffer({
             }}
           >
             <Timer className="size-3.5" strokeWidth={2.25} aria-hidden="true" />
-            عرض محدود اليوم
+            عرض لفترة محدودة
           </span>
           <h3 className="font-black font-heading text-2xl sm:text-3xl">
             {s.title}

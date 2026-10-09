@@ -1,407 +1,438 @@
 "use client";
 
-// components/dashboard/CommandPalette.tsx — لوحة أوامر موحّدة (⌘K).
-//
-// السبب الجذري:
-// التنقل بالماوس في داشبورد فيه 12+ صفحة مرهق. لوحة الأوامر تعطي التاجر
-// قوة فورية: اكتب "طلبات" → Enter → في الصفحة.
-//
-// المبادئ:
-//  - ⌘K / Ctrl+K لفتحها، Esc لإغلاقها.
-//  - 5 مجموعات: تنقل، إجراءات سريعة، بحث، متجر، مساعدة.
-//  - كل action يعرف deep link.
-//  - بحث fuzzy على العربية والإنجليزية.
-//  - لا يستدعي APIs إلا عند الحاجة.
-import { useCallback, useEffect, useMemo, useState } from "react";
+// CommandPalette — «ابحث أو انتقل» (Ctrl/⌘+K، أو زر البحث على الموبايل).
+//  - بحث حي في طلبات المتجر (بالكود أو موبايل العميل أو اسمه) ومنتجاته (بالعربية أو الفرانكو) وعملائه.
+//  - انتقال لأي صفحة في اللوحة (من خريطة الصفحات نفسها التي تبني القائمة الجانبية).
+//  - إجراءات سريعة حقيقية فقط: منتج جديد، كود خصم، معاينة المتجر ونسخ رابطه، الثيم، النغمة، نوفا، الجولة.
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Command } from "cmdk";
 import {
-  Home,
-  Store,
-  ShoppingCart,
-  Package,
-  Users,
-  BarChart3,
-  Settings,
-  CreditCard,
-  Plus,
+  Copy,
   ExternalLink,
-  MessageCircle,
-  Search as SearchIcon,
   HelpCircle,
-  Palette,
-  Tag,
-  Truck,
-  Star,
-  Sparkles,
-  Moon,
-  Sun,
+  Loader2,
   LogOut,
+  Moon,
+  Package,
+  Plus,
+  Search as SearchIcon,
+  ShoppingCart,
+  Sparkles,
+  TicketPercent,
+  Users,
+  Volume2,
+  type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import { merchantLogoutAction } from "@/server/actions/auth";
-import { EDITION } from "@/lib/edition";
+import { normalizeArabic } from "@/lib/arabic";
+import { formatEgp } from "@/lib/money";
+import { cn } from "@/lib/utils";
+import { arCount, NOUN } from "@/lib/format";
+import { orderStatusLabel, orderStatusTone, TONE_CHIP } from "@/lib/order-status";
+import type { SearchHit } from "@/server/repos/dashboard-search";
+import { NAV_ITEMS } from "./nav";
+import { useDashboardPulse } from "./DashboardPulse";
 
-const SW = 2.25;
-
-type CmdItem = {
+type Cmd = {
   id: string;
-  group: string;
   label: string;
-  description?: string;
-  icon: React.ComponentType<{ className?: string; strokeWidth?: number }>;
+  hint?: string;
+  icon: LucideIcon;
   keywords?: string[];
-  action: () => void | Promise<void>;
+  run: () => void;
 };
 
-const PLATFORM_ONLY_IDS = new Set(["nav-store", "nav-billing"]);
+/** يفتح لوحة الأوامر من أي مكان (زر البحث في الشريط العلوي مثلاً). */
+export function openCommandPalette(): void {
+  window.dispatchEvent(new Event("clp:open-palette"));
+}
 
-export function CommandPalette({ storeHref }: { storeHref?: string | null } = {}) {
+const norm = (s: string) => normalizeArabic(s);
+
+const GROUP =
+  "[&_[cmdk-group-heading]]:px-2.5 [&_[cmdk-group-heading]]:pb-1.5 [&_[cmdk-group-heading]]:pt-2.5 [&_[cmdk-group-heading]]:text-[11px] [&_[cmdk-group-heading]]:font-black [&_[cmdk-group-heading]]:text-ink-3";
+
+function matches(c: Cmd, q: string): boolean {
+  if (!q) return true;
+  const hay = norm([c.label, c.hint ?? "", ...(c.keywords ?? [])].join(" "));
+  return q.split(" ").every((w) => hay.includes(w));
+}
+
+export function CommandPalette({ storeHref, hasStore }: { storeHref: string | null; hasStore: boolean }) {
+  const router = useRouter();
+  const { soundOn, toggleSound } = useDashboardPulse();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const router = useRouter();
+  const [hits, setHits] = useState<SearchHit[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [searched, setSearched] = useState("");
+  const abort = useRef<AbortController | null>(null);
+  // تُعرض داخل غلاف اللوحة (.dash) لترث توكنات ثيمها؛ البوابة الافتراضية (body) خارجه.
+  const [container, setContainer] = useState<HTMLElement | null>(null);
+  useEffect(() => setContainer(document.querySelector<HTMLElement>(".dash")), []);
 
-  // ⌘K to open.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setOpen((v) => !v);
       }
-      if (e.key === "Escape" && open) {
-        setOpen(false);
-      }
     };
+    const onOpen = () => setOpen(true);
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open]);
+    window.addEventListener("clp:open-palette", onOpen);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("clp:open-palette", onOpen);
+    };
+  }, []);
 
-  // Reset query on close.
   useEffect(() => {
-    if (!open) setQuery("");
+    if (open) return;
+    setQuery("");
+    setHits([]);
+    setSearched("");
+    abort.current?.abort();
   }, [open]);
 
-  const nav = useCallback(
-    (path: string) => {
+  // بحث الخادم بعد توقف الكتابة 200 مللي ثانية؛ الطلب الأقدم يُلغى.
+  useEffect(() => {
+    const q = query.trim();
+    if (!hasStore || q.length < 2) {
+      abort.current?.abort();
+      setHits([]);
+      setSearching(false);
+      setSearched("");
+      return;
+    }
+    setSearching(true);
+    const t = setTimeout(async () => {
+      abort.current?.abort();
+      const ctl = new AbortController();
+      abort.current = ctl;
+      try {
+        const res = await fetch(`/api/dashboard/search?q=${encodeURIComponent(q)}`, { signal: ctl.signal, cache: "no-store" });
+        if (!res.ok) throw new Error(String(res.status));
+        const data = (await res.json()) as { hits: SearchHit[] };
+        setHits(data.hits);
+        setSearched(q);
+      } catch (e) {
+        if ((e as Error).name === "AbortError") return;
+        setHits([]);
+        setSearched(q);
+      } finally {
+        if (abort.current === ctl) setSearching(false);
+      }
+    }, 200);
+    return () => clearTimeout(t);
+  }, [query, hasStore]);
+
+  const go = useCallback(
+    (href: string) => {
       setOpen(false);
-      router.push(path);
+      router.push(href);
     },
     [router]
   );
 
-  const handleLogout = useCallback(async () => {
-    setOpen(false);
-    try {
-      await merchantLogoutAction();
-    } catch {
-      toast.error("تعذر تسجيل الخروج");
-    }
-  }, []);
-
-  const items: CmdItem[] = useMemo(
-    () => [
-      // ─── التنقل
-      {
-        id: "nav-home",
-        group: "التنقل",
-        label: "نظرة عامة",
-        description: "الصفحة الرئيسية للداشبورد",
-        icon: Home,
-        keywords: ["home", "main", "الرئيسية"],
-        action: () => nav("/dashboard"),
-      },
-      {
-        id: "nav-store",
-        group: "التنقل",
-        label: "متجري",
-        description: "تفاصيل وإعدادات المتجر",
-        icon: Store,
-        keywords: ["store", "shop"],
-        action: () => nav("/dashboard/store"),
-      },
-      {
-        id: "nav-orders",
-        group: "التنقل",
-        label: "الطلبات",
-        description: "إدارة وتتبع الطلبات",
-        icon: ShoppingCart,
-        keywords: ["orders", "الاوردرات"],
-        action: () => nav("/dashboard/orders"),
-      },
-      {
-        id: "nav-products",
-        group: "التنقل",
-        label: "المنتجات",
-        description: "كتالوج المنتجات والمخزون",
-        icon: Package,
-        keywords: ["products", "المنتجات"],
-        action: () => nav("/dashboard/products"),
-      },
-      {
-        id: "nav-customers",
-        group: "التنقل",
-        label: "العملاء",
-        description: "قاعدة عملاء متجرك",
-        icon: Users,
-        keywords: ["customers", "العملاء"],
-        action: () => nav("/dashboard/customers"),
-      },
-      {
-        id: "nav-analytics",
-        group: "التنقل",
-        label: "التحليلات",
-        description: "مؤشرات الأداء والتقارير",
-        icon: BarChart3,
-        keywords: ["analytics", "stats", "تحليلات"],
-        action: () => nav("/dashboard/analytics"),
-      },
-      {
-        id: "nav-design",
-        group: "التنقل",
-        label: "التصميم",
-        description: "محرر التصميم الحي",
-        icon: Palette,
-        keywords: ["design", "editor", "تصميم"],
-        action: () => nav("/dashboard/design"),
-      },
-      {
-        id: "nav-settings",
-        group: "التنقل",
-        label: "الإعدادات",
-        description: "إعدادات الحساب والمتجر",
-        icon: Settings,
-        keywords: ["settings", "إعدادات"],
-        action: () => nav("/dashboard/settings"),
-      },
-      {
-        id: "nav-billing",
-        group: "التنقل",
-        label: "الفوترة والتفعيل",
-        description: "خطة الاشتراك والدفع",
-        icon: CreditCard,
-        keywords: ["billing", "payment", "دفع"],
-        action: () => nav("/dashboard/billing"),
-      },
-
-      // ─── إجراءات سريعة
-      {
-        id: "action-new-product",
-        group: "إجراءات سريعة",
-        label: "أضف منتجاً جديداً",
-        description: "فتح نموذج منتج جديد",
-        icon: Plus,
-        keywords: ["add", "new", "منتج جديد", "إضافة"],
-        action: () => nav("/dashboard/products/new"),
-      },
-      {
-        id: "action-new-discount",
-        group: "إجراءات سريعة",
-        label: "أنشئ كود خصم",
-        description: "كود خصم جديد للعملاء",
-        icon: Tag,
-        keywords: ["discount", "coupon", "خصم"],
-        action: () => nav("/dashboard/settings?tab=discounts"),
-      },
-      {
-        id: "action-edit-shipping",
-        group: "إجراءات سريعة",
-        label: "عدّل أسعار الشحن",
-        description: "مناطق الشحن لكل محافظة",
-        icon: Truck,
-        keywords: ["shipping", "شحن"],
-        action: () => nav("/dashboard/settings?tab=shipping"),
-      },
-      {
-        id: "action-reviews",
-        group: "إجراءات سريعة",
-        label: "راجع تقييمات العملاء",
-        description: "اعتماد أو رفض التقييمات",
-        icon: Star,
-        keywords: ["reviews", "تقييمات"],
-        action: () => nav("/dashboard/settings?tab=reviews"),
-      },
-
-      // ─── المتجر
-      {
-        id: "store-preview",
-        group: "المتجر",
-        label: "معاينة المتجر",
-        description: "فتح المتجر في تبويب جديد",
-        icon: ExternalLink,
-        keywords: ["preview", "معاينة", "view"],
-        action: () => {
-          setOpen(false);
-          window.open(storeHref || "/", "_blank");
-        },
-      },
-      {
-        id: "store-whatsapp",
-        group: "المتجر",
-        label: "افتح واتساب المتجر",
-        description: "محادثة مباشرة مع العملاء",
-        icon: MessageCircle,
-        keywords: ["whatsapp", "واتساب"],
-        action: () => {
-          setOpen(false);
-          window.open("https://wa.me/", "_blank");
-        },
-      },
-
-      // ─── مساعدة
-      {
-        id: "help-guide",
-        group: "مساعدة",
-        label: "دليل البدء السريع",
-        description: "افتح tour الجولة",
-        icon: HelpCircle,
-        keywords: ["help", "guide", "مساعدة"],
-        action: () => {
-          setOpen(false);
-          window.dispatchEvent(new CustomEvent("clp:reopen-tour"));
-        },
-      },
-      {
-        id: "help-ai",
-        group: "مساعدة",
-        label: "اسأل نوفا (المساعد الذكي)",
-        description: "مبيعاتك، مخزونك، منشور جاهز... (Ctrl+J)",
-        icon: Sparkles,
-        keywords: ["ai", "ذكاء اصطناعي", "نوفا", "nova"],
-        action: () => {
-          setOpen(false);
-          window.dispatchEvent(new CustomEvent("clp:open-copilot"));
-        },
-      },
-    ].filter((i) => EDITION === "platform" || !PLATFORM_ONLY_IDS.has(i.id)),
-    [nav, storeHref]
+  const pages: Cmd[] = useMemo(
+    () => NAV_ITEMS.map((n) => ({ id: `nav:${n.href}`, label: n.label, hint: n.hint, icon: n.icon, keywords: n.keywords, run: () => go(n.href) })),
+    [go]
   );
 
-  // Grouping.
-  const grouped = useMemo(() => {
-    const map = new Map<string, CmdItem[]>();
-    for (const item of items) {
-      const list = map.get(item.group) ?? [];
-      list.push(item);
-      map.set(item.group, list);
+  const actions: Cmd[] = useMemo(() => {
+    const list: Cmd[] = [];
+    if (hasStore) {
+      list.push(
+        { id: "new-product", label: "أضف منتجاً جديداً", icon: Plus, keywords: ["منتج جديد", "new product", "اضافه"], run: () => go("/dashboard/products/new") },
+        { id: "pending-orders", label: "الطلبات بانتظار التأكيد", icon: ShoppingCart, keywords: ["جديد", "تاكيد", "new orders"], run: () => go("/dashboard/orders?status=new") },
+        { id: "new-discount", label: "أنشئ كود خصم", icon: TicketPercent, keywords: ["كوبون", "خصم", "coupon"], run: () => go("/dashboard/discounts") }
+      );
     }
-    return Array.from(map.entries());
-  }, [items]);
+    if (storeHref) {
+      list.push(
+        {
+          id: "preview",
+          label: "افتح متجري",
+          hint: "في تبويب جديد",
+          icon: ExternalLink,
+          keywords: ["معاينه", "preview", "متجر"],
+          run: () => {
+            setOpen(false);
+            window.open(storeHref, "_blank", "noopener");
+          },
+        },
+        {
+          id: "copy-link",
+          label: "انسخ رابط متجري",
+          hint: "لمشاركته على واتساب أو فيسبوك",
+          icon: Copy,
+          keywords: ["رابط", "لينك", "link", "share"],
+          run: async () => {
+            setOpen(false);
+            try {
+              await navigator.clipboard.writeText(storeHref);
+              toast.success("نُسخ رابط متجرك");
+            } catch {
+              toast.error("تعذر النسخ تلقائياً", { description: storeHref });
+            }
+          },
+        }
+      );
+    }
+    list.push(
+      {
+        id: "theme",
+        label: "بدّل بين الوضع الفاتح والداكن",
+        icon: Moon,
+        keywords: ["ثيم", "theme", "dark", "light", "ليلي"],
+        run: () => {
+          setOpen(false);
+          window.dispatchEvent(new Event("clp:toggle-theme"));
+        },
+      },
+      {
+        id: "sound",
+        label: soundOn ? "اكتم نغمة الطلب الجديد" : "شغّل نغمة الطلب الجديد",
+        icon: Volume2,
+        keywords: ["صوت", "نغمه", "sound", "mute"],
+        run: () => {
+          setOpen(false);
+          toggleSound();
+        },
+      }
+    );
+    if (hasStore) {
+      list.push({
+        id: "nova",
+        label: "اسأل نوفا",
+        hint: "مساعدك يجيب من بيانات متجرك (Ctrl+J)",
+        icon: Sparkles,
+        keywords: ["ai", "ذكاء", "مساعد", "nova"],
+        run: () => {
+          setOpen(false);
+          window.dispatchEvent(new Event("clp:open-copilot"));
+        },
+      });
+    }
+    list.push({
+      id: "tour",
+      label: "جولة سريعة في اللوحة",
+      icon: HelpCircle,
+      keywords: ["مساعده", "شرح", "help", "tour"],
+      run: () => {
+        setOpen(false);
+        window.dispatchEvent(new Event("clp:reopen-tour"));
+      },
+    });
+    return list;
+  }, [go, hasStore, storeHref, soundOn, toggleSound]);
+
+  const q = norm(query.trim());
+  const shownPages = pages.filter((c) => matches(c, q));
+  const shownActions = actions.filter((c) => matches(c, q));
+  const showLogout = !q || "تسجيل الخروج logout".includes(q) || norm("تسجيل الخروج").includes(q);
+  const waiting = searching && query.trim() !== searched;
+  const nothing = !waiting && hits.length === 0 && shownPages.length === 0 && shownActions.length === 0 && !showLogout;
+
+  const hitRow = (h: SearchHit) => {
+    if (h.kind === "order") {
+      return (
+        <Item key={`o:${h.id}`} value={`o:${h.id}`} icon={ShoppingCart} onSelect={() => go(`/dashboard/orders/${h.id}`)}>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-[12.5px] font-bold" dir="ltr" style={{ textAlign: "right" }}>
+              {h.title}
+            </span>
+            <span className="mt-0.5 block truncate text-[11px] text-ink-3">{h.sub}</span>
+          </span>
+          <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[10.5px] font-black", TONE_CHIP[orderStatusTone(h.status)])}>
+            {orderStatusLabel(h.status)}
+          </span>
+          <span className="shrink-0 text-[12px] font-black tabular-nums">{formatEgp(h.totalPiasters)}</span>
+        </Item>
+      );
+    }
+    if (h.kind === "product") {
+      return (
+        <Item key={`p:${h.id}`} value={`p:${h.id}`} icon={Package} image={h.image} onSelect={() => go(`/dashboard/products/${h.id}`)}>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-[12.5px] font-bold">{h.title}</span>
+            <span className="mt-0.5 block truncate text-[11px] text-ink-3">
+              {h.status === "active" ? "منشور" : h.status === "draft" ? "مسودة" : "مخفي"} · {h.sub}
+            </span>
+          </span>
+          <span className="shrink-0 text-[12px] font-black tabular-nums">{formatEgp(h.pricePiasters)}</span>
+        </Item>
+      );
+    }
+    return (
+      <Item key={`c:${h.id}`} value={`c:${h.id}`} icon={Users} onSelect={() => go(`/dashboard/orders?q=${encodeURIComponent(h.sub)}`)}>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[12.5px] font-bold">{h.title}</span>
+          <span className="mt-0.5 block truncate text-[11px] text-ink-3" dir="ltr" style={{ textAlign: "right" }}>
+            {h.sub}
+          </span>
+        </span>
+        <span className="shrink-0 text-[11px] font-bold text-ink-3">
+          {h.ordersCount > 0 ? `${arCount(h.ordersCount, NOUN.order)} · عرض طلباته` : "عرض طلباته"}
+        </span>
+      </Item>
+    );
+  };
 
   return (
     <Command.Dialog
       open={open}
       onOpenChange={setOpen}
-      label="لوحة الأوامر"
-      className="fixed inset-0 z-[90] grid place-items-start justify-center bg-black/70 px-4 pt-24 backdrop-blur-md"
+      label="ابحث أو انتقل"
+      container={container ?? undefined}
+      shouldFilter={false}
       loop
+      overlayClassName="fixed inset-0 z-[90] bg-black/60 backdrop-blur-sm"
+      contentClassName="fixed inset-x-3 top-[max(4rem,10dvh)] z-[91] mx-auto max-w-xl"
     >
-      <div className="w-full max-w-xl overflow-hidden rounded-2xl border border-edge/15 bg-space-2 text-ink shadow-2xl shadow-black/60">
-        {/* Search input */}
+      <div dir="rtl" className="dash-palette overflow-hidden rounded-2xl border border-edge/15 bg-space-2 text-ink shadow-2xl shadow-black/50">
         <div className="flex items-center gap-3 border-b border-edge/10 px-4 py-3.5">
-          <SearchIcon
-            className="size-4 shrink-0 text-ink-3"
-            strokeWidth={SW}
-            aria-hidden="true"
-          />
+          {waiting ? (
+            <Loader2 className="size-4 shrink-0 animate-spin text-nova-2" aria-hidden="true" />
+          ) : (
+            <SearchIcon className="size-4 shrink-0 text-ink-3" strokeWidth={2.25} aria-hidden="true" />
+          )}
           <Command.Input
             autoFocus
             value={query}
             onValueChange={setQuery}
-            placeholder="ابحث أو اكتب أمراً…"
-            className="min-w-0 flex-1 bg-transparent text-sm font-bold text-ink outline-none placeholder:font-normal placeholder:text-ink-3"
+            placeholder={hasStore ? "ابحث برقم طلب أو موبايل عميل أو اسم منتج…" : "ابحث عن صفحة أو أمر…"}
+            className="min-w-0 flex-1 bg-transparent text-[14px] font-bold text-ink outline-none placeholder:font-normal placeholder:text-ink-3"
           />
-          <kbd
-            className="shrink-0 rounded-md border border-edge/10 bg-edge/[0.05] px-1.5 py-0.5 font-mono text-[10px] font-bold text-ink-3"
-            dir="ltr"
-          >
+          <kbd className="hidden shrink-0 rounded-md border border-edge/10 bg-edge/[0.05] px-1.5 py-0.5 font-mono text-[10px] font-bold text-ink-3 sm:block" dir="ltr">
             Esc
           </kbd>
         </div>
 
-        {/* Results */}
-        <Command.List className="max-h-[420px] overflow-y-auto p-2">
-          <Command.Empty className="grid place-items-center px-4 py-12 text-center">
-            <p className="text-sm font-bold text-ink-3">لا نتائج مطابقة</p>
-            <p className="mt-1 text-[11px] text-ink-3/70">
-              جرّب كلمات مختلفة أو ابحث في اسم صفحة
-            </p>
-          </Command.Empty>
+        <Command.List className="max-h-[min(60dvh,440px)] overflow-y-auto overscroll-contain p-2">
+          {nothing ? (
+            <div className="px-4 py-10 text-center">
+              <p className="text-[13px] font-bold text-ink-2">لا نتائج لـ «{query.trim()}»</p>
+              <p className="mt-1 text-[11.5px] text-ink-3">جرّب كود الطلب كاملاً مثل CLP-1042، أو آخر 4 أرقام من موبايل العميل.</p>
+            </div>
+          ) : null}
 
-          {grouped.map(([groupName, groupItems]) => (
-            <Command.Group
-              key={groupName}
-              heading={groupName}
-              className="[&_[cmdk-group-heading]]:mb-1 [&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:py-2 [&_[cmdk-group-heading]]:text-[10.5px] [&_[cmdk-group-heading]]:font-black [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wider [&_[cmdk-group-heading]]:text-ink-3"
-            >
-              {groupItems.map((item) => {
-                const Icon = item.icon;
-                return (
-                  <Command.Item
-                    key={item.id}
-                    value={`${item.label} ${item.description ?? ""} ${(item.keywords ?? []).join(" ")}`}
-                    onSelect={() => {
-                      void item.action();
-                    }}
-                    className="group flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5 transition-colors data-[selected=true]:bg-nova/20 data-[selected=true]:text-white"
-                  >
-                    <span className="grid size-7 shrink-0 place-items-center rounded-lg border border-edge/10 bg-edge/[0.03] text-ink-2 group-data-[selected=true]:border-nova-2/40 group-data-[selected=true]:bg-nova/20 group-data-[selected=true]:text-white">
-                      <Icon className="size-3.5" strokeWidth={SW} aria-hidden="true" />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-[12.5px] font-bold">
-                        {item.label}
-                      </p>
-                      {item.description ? (
-                        <p className="mt-0.5 truncate text-[10.5px] text-ink-3">
-                          {item.description}
-                        </p>
-                      ) : null}
-                    </div>
-                  </Command.Item>
-                );
-              })}
+          {hits.length > 0 ? (
+            <Command.Group heading="في متجرك" className={GROUP}>{hits.map(hitRow)}</Command.Group>
+          ) : waiting ? (
+            <div className="space-y-1.5 p-1" aria-busy="true">
+              {[0, 1].map((i) => (
+                <div key={i} className="h-12 animate-pulse rounded-xl bg-edge/[0.04]" />
+              ))}
+            </div>
+          ) : null}
+
+          {shownPages.length > 0 ? (
+            <Command.Group heading="انتقل إلى" className={GROUP}>
+              {shownPages.map((c) => (
+                <Item key={c.id} value={c.id} icon={c.icon} onSelect={c.run}>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[12.5px] font-bold">{c.label}</span>
+                    {c.hint ? <span className="mt-0.5 block truncate text-[11px] text-ink-3">{c.hint}</span> : null}
+                  </span>
+                </Item>
+              ))}
             </Command.Group>
-          ))}
+          ) : null}
 
-          {/* Logout — في النهاية دائماً */}
-          <Command.Group
-            heading=""
-            className="mt-2 border-t border-edge/5 pt-2"
-          >
-            <Command.Item
-              value="logout signout تسجيل الخروج"
-              onSelect={handleLogout}
-              className="group flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5 text-rose-600 dark:text-rose-300 transition-colors data-[selected=true]:bg-rose-500/15"
-            >
-              <span className="grid size-7 shrink-0 place-items-center rounded-lg border border-rose-500/20 bg-rose-500/10">
-                <LogOut className="size-3.5" strokeWidth={SW} aria-hidden="true" />
-              </span>
-              <span className="text-[12.5px] font-bold">تسجيل الخروج</span>
-            </Command.Item>
-          </Command.Group>
+          {shownActions.length > 0 ? (
+            <Command.Group heading="إجراءات" className={GROUP}>
+              {shownActions.map((c) => (
+                <Item key={c.id} value={c.id} icon={c.icon} onSelect={c.run}>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[12.5px] font-bold">{c.label}</span>
+                    {c.hint ? <span className="mt-0.5 block truncate text-[11px] text-ink-3">{c.hint}</span> : null}
+                  </span>
+                </Item>
+              ))}
+            </Command.Group>
+          ) : null}
+
+          {showLogout ? (
+            <Command.Group className="mt-1 border-t border-edge/[0.06] pt-1">
+              <Item
+                value="logout"
+                icon={LogOut}
+                danger
+                onSelect={() => {
+                  setOpen(false);
+                  void merchantLogoutAction().catch(() => toast.error("تعذر تسجيل الخروج"));
+                }}
+              >
+                <span className="text-[12.5px] font-bold">تسجيل الخروج</span>
+              </Item>
+            </Command.Group>
+          ) : null}
         </Command.List>
 
-        {/* Footer hints */}
-        <div className="flex items-center justify-between gap-3 border-t border-edge/10 bg-edge/[0.02] px-4 py-2.5 text-[10px] text-ink-3">
-          <div className="flex items-center gap-3">
-            <span className="inline-flex items-center gap-1">
-              <kbd className="rounded bg-edge/5 px-1 font-mono" dir="ltr">
-                ↑↓
-              </kbd>
-              التنقل
-            </span>
-            <span className="inline-flex items-center gap-1">
-              <kbd className="rounded bg-edge/5 px-1 font-mono" dir="ltr">
-                ↵
-              </kbd>
-              فتح
-            </span>
-          </div>
-          <span className="font-mono" dir="ltr">
-            {items.length} أمر
+        <div className="hidden items-center gap-4 border-t border-edge/10 bg-edge/[0.02] px-4 py-2.5 text-[11px] text-ink-3 sm:flex">
+          <span className="inline-flex items-center gap-1.5">
+            <kbd className="rounded bg-edge/[0.06] px-1 font-mono" dir="ltr">
+              ↑↓
+            </kbd>
+            للتنقل
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <kbd className="rounded bg-edge/[0.06] px-1 font-mono" dir="ltr">
+              Enter
+            </kbd>
+            للفتح
           </span>
         </div>
       </div>
     </Command.Dialog>
+  );
+}
+
+function Item({
+  value,
+  icon: Icon,
+  image,
+  danger,
+  onSelect,
+  children,
+}: {
+  value: string;
+  icon: LucideIcon;
+  image?: string | null;
+  danger?: boolean;
+  onSelect: () => void;
+  children: React.ReactNode;
+}) {
+  const [broken, setBroken] = useState(false);
+  return (
+    <Command.Item
+      value={value}
+      onSelect={onSelect}
+      className={cn(
+        "group flex min-h-12 cursor-pointer items-center gap-3 rounded-xl px-2.5 py-2 transition-colors",
+        danger ? "text-bad data-[selected=true]:bg-bad/10" : "data-[selected=true]:bg-nova/12"
+      )}
+    >
+      {image && !broken ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={image} alt="" onError={() => setBroken(true)} className="size-8 shrink-0 rounded-lg border border-edge/10 object-cover" />
+      ) : (
+        <span
+          className={cn(
+            "grid size-8 shrink-0 place-items-center rounded-lg border",
+            danger
+              ? "border-bad/20 bg-bad/10"
+              : "border-edge/10 bg-edge/[0.03] text-ink-2 group-data-[selected=true]:border-nova/30 group-data-[selected=true]:text-nova-2"
+          )}
+        >
+          <Icon className="size-4" strokeWidth={2} aria-hidden="true" />
+        </span>
+      )}
+      {children}
+    </Command.Item>
   );
 }

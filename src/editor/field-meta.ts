@@ -1,26 +1,203 @@
-/** أسماء الحقول بالعربية + تلميحات. أي حقل غير مذكور يظهر باسمه الإنجليزي منسّقًا */
-export const FIELD_LABELS: Record<string, { label: string; hint?: string }> = {
-    headline: { label: "العنوان الرئيسي", hint: "أقوى جملة في متجرك، قصيرة ومباشرة" }, subheadline: { label: "الوصف" }, eyebrow: { label: "سطر صغير فوق العنوان" },
-    title: { label: "العنوان" }, subtitle: { label: "عنوان فرعي" }, text: { label: "النص" }, body: { label: "المحتوى", hint: "يدعم ## للعناوين و - للقوائم" },
-    images: { label: "الصور" }, image: { label: "الصورة" }, avatar: { label: "صورة شخصية" }, screenshot: { label: "سكرين شوت" }, poster: { label: "صورة الغلاف" }, videoUrl: { label: "رابط الفيديو" },
-    primaryCta: { label: "الزر الرئيسي" }, secondaryCta: { label: "الزر الثانوي" }, cta: { label: "الزر" }, label: { label: "النص" }, target: { label: "يفتح" }, style: { label: "الشكل" }, icon: { label: "الأيقونة" },
-    highlights: { label: "نقاط الثقة" }, items: { label: "العناصر" }, messages: { label: "الرسائل" }, blocks: { label: "العناصر" }, stats: { label: "أرقام" },
-    variant: { label: "التصميم" }, enabled: { label: "ظاهر" }, spacing: { label: "الهوامش" }, background: { label: "الخلفية" }, backgroundImage: { label: "صورة الخلفية" }, reveal: { label: "حركة الدخول" }, anchor: { label: "معرّف للتمرير" },
-    source: { label: "مصدر المنتجات" }, limit: { label: "عدد المنتجات" }, columnsMobile: { label: "أعمدة الموبايل" }, columnsDesktop: { label: "أعمدة الكمبيوتر" }, showViewAll: { label: "زر عرض الكل" }, quickAdd: { label: "إضافة سريعة للسلة" },
-    categorySlugs: { label: "الأقسام المختارة", hint: "فارغ = كل الأقسام" }, showProductCount: { label: "عدد المنتجات تحت كل قسم" }, productSlugs: { label: "المنتجات" }, spotlightProductSlug: { label: "المنتج النجم" },
-    couponCode: { label: "كود خصم" }, endsAt: { label: "ينتهي في" }, bundleDiscountPercent: { label: "خصم الطقم %" }, rating: { label: "التقييم" }, name: { label: "الاسم" }, location: { label: "المدينة" }, includeVerifiedReviews: { label: "ضم تقييمات المشترين الحقيقية" },
-    q: { label: "السؤال" }, a: { label: "الإجابة" }, handle: { label: "اسم الحساب" }, postUrl: { label: "رابط البوست" }, address: { label: "العنوان" }, mapEmbedUrl: { label: "رابط خريطة Google (Embed)" }, workingHours: { label: "مواعيد العمل" }, showChannels: { label: "إظهار قنوات التواصل" },
-    overlayOpacity: { label: "تعتيم الصورة" }, textAlign: { label: "محاذاة النص" }, height: { label: "الارتفاع" }, autoplayMs: { label: "سرعة التبديل (مللي ثانية)" }, dismissible: { label: "يمكن إغلاقه" }, sticky: { label: "ثابت" }, value: { label: "القيمة" }, columns: { label: "الأعمدة" }, rows: { label: "الصفوف" }, level: { label: "المستوى" }, caption: { label: "تعليق" }, kind: { label: "النوع" }, alt: { label: "وصف الصورة (SEO)" }, focalX: { label: "نقطة التركيز أفقيًا" }, focalY: { label: "نقطة التركيز عموديًا" }, url: { label: "الرابط" }, slug: { label: "المعرّف" }, tag: { label: "الكلمة" },
-  };
-  export const ENUM_LABELS: Record<string, string> = {
-    split: "نص وصورة", fullscreen: "صورة كاملة", centered: "متوسّط", carousel: "شرائح", product_spotlight: "منتج نجم", collage: "كولاج", video: "فيديو", editorial: "مجلة",
-    grid: "شبكة", circles: "دوائر", stories: "ستوريز", cards_overlay: "كروت بطبقة", scroll: "شريط أفقي", masonry: "متدرج", featured_first: "الأول كبير", two_rows_scroll: "صفّان",
-    wide: "عريض", split_duo: "اثنان", triple: "ثلاثة", ticket: "تذكرة", floating_card: "كارت عائم", banner: "بانر", hero_card: "كارت كبير", inline: "مضمّن", row: "صف", cards: "كروت", compact_strip: "شريط مختصر",
-    screenshots: "سكرين شوت", accordion: "أكورديون", two_columns: "عمودان", chat_bubbles: "فقاعات دردشة", centered_story: "قصة", timeline: "خط زمني", founder_note: "رسالة المؤسس", narrow: "ضيق", build_your_set: "كوّن طقمك", fixed_bundle: "طقم ثابت", cinematic: "سينمائي", split_map: "مع خريطة", compact: "مختصر", stack: "متتابع", marquee: "متحرك", static: "ثابت", rotating: "متبدل",
-    compact_: "", normal: "عادية", spacious: "واسعة", default: "عادية", muted: "خافتة", primary: "أساسية", dark: "داكنة", gradient: "تدرج", image: "صورة",
-    none: "بدون", fade: "تلاشي", slide_up: "انزلاق", zoom: "تكبير", stagger: "تتابع", start: "يمين", auto: "تلقائي", tall: "طويل", screen: "كامل الشاشة",
-    secondary: "ثانوي", ghost: "شفاف", link: "رابط", home: "الرئيسية", all_products: "كل المنتجات", category: "قسم", product: "منتج", page: "صفحة", section: "قسم في الرئيسية", contact: "التواصل", external: "رابط خارجي",
-    featured: "المميزة", newest: "الأحدث", best_sellers: "الأكثر مبيعًا", on_sale: "عليها خصم", manual: "اختيار يدوي", heading: "عنوان", paragraph: "فقرة", icon_list: "قائمة بأيقونات", divider: "فاصل", comparison: "جدول مقارنة",
-  };
-  export const ICONS = ["truck", "banknote", "shield-check", "rotate-ccw", "headphones", "badge-check", "star", "heart", "gift", "sparkles", "zap", "clock", "phone", "message-circle", "instagram", "map-pin", "package", "percent", "award", "thumbs-up", "leaf", "flame", "crown", "gem", "smile", "check-circle", "lock", "credit-card", "shopping-bag", "tag"];
-  
+// field-meta.ts — أسماء حقول محرر المحتوى وخياراتها بالعربية. كل حقل أو خيار يظهر للتاجر له اسم هنا (يفرضه اختبار
+// tests/unit/content-editor-fields.test.ts)، والاسم الخاص بمكان معيّن (CONTEXT_LABELS بالمسار) يتقدم على العام.
+
+export type FieldMeta = { label: string; hint?: string };
+
+export const FIELD_LABELS: Record<string, FieldMeta> = {
+  // نصوص
+  headline: { label: "العنوان الرئيسي", hint: "أقوى جملة في متجرك، قصيرة ومباشرة" },
+  subheadline: { label: "السطر تحت العنوان" },
+  eyebrow: { label: "سطر صغير فوق العنوان" },
+  title: { label: "العنوان" },
+  subtitle: { label: "السطر تحت العنوان" },
+  text: { label: "النص" },
+  body: { label: "المحتوى", hint: "## لعنوان فرعي، و- في أول السطر لقائمة" },
+  name: { label: "الاسم" },
+  tagline: { label: "السطر التعريفي" },
+  description: { label: "الوصف" },
+  label: { label: "النص" },
+  q: { label: "السؤال" },
+  a: { label: "الإجابة" },
+  quote: { label: "الاقتباس" },
+  address: { label: "العنوان" },
+  messages: { label: "الرسائل" },
+  // صور وروابط
+  images: { label: "الصور" },
+  image: { label: "الصورة" },
+  logo: { label: "الشعار" },
+  favicon: { label: "أيقونة تبويب المتصفح", hint: "صورة مربعة صغيرة" },
+  screenshot: { label: "لقطة الشاشة" },
+  backgroundImage: { label: "صورة الخلفية" },
+  ogImage: { label: "صورة المشاركة", hint: "تظهر عند مشاركة رابط متجرك على واتساب وفيسبوك" },
+  videoUrl: { label: "رابط الفيديو", hint: "YouTube أو Vimeo" },
+  url: { label: "الرابط" },
+  alt: { label: "وصف الصورة" },
+  primaryCta: { label: "الزر الرئيسي" },
+  secondaryCta: { label: "الزر الثانوي" },
+  target: { label: "يفتح" },
+  icon: { label: "الأيقونة" },
+  // عناصر
+  items: { label: "العناصر" },
+  blocks: { label: "الفقرات" },
+  nav: { label: "روابط القائمة" },
+  productTrustRow: { label: "صف الثقة في صفحة المنتج", hint: "فارغ = يُكتب تلقائياً من سياساتك" },
+  // الشكل
+  variant: { label: "التصميم" },
+  layout: { label: "تخطيط الصفحة" },
+  spacing: { label: "المسافات حول القسم" },
+  background: { label: "الخلفية" },
+  reveal: { label: "حركة الظهور" },
+  overlayOpacity: { label: "تعتيم الصورة", hint: "في تصميم «صورة كاملة» فقط" },
+  columnsDesktop: { label: "الأعمدة على الكمبيوتر" },
+  // المنتجات والأقسام
+  source: { label: "المنتجات المعروضة" },
+  limit: { label: "عدد المنتجات" },
+  slug: { label: "الاختيار" },
+  slugs: { label: "المنتجات" },
+  tag: { label: "الكلمة", hint: "من كلمات البحث في المنتجات" },
+  sectionId: { label: "القسم" },
+  categorySlugs: { label: "الأقسام المعروضة", hint: "بلا اختيار = كل الأقسام" },
+  productSlugs: { label: "المنتجات" },
+  spotlightProductSlug: { label: "المنتج النجم" },
+  showProductCount: { label: "عدد المنتجات تحت كل قسم" },
+  showViewAll: { label: "زر «عرض الكل»" },
+  quickAdd: { label: "إضافة سريعة للسلة من البطاقة" },
+  includeVerifiedReviews: { label: "أضف تقييمات المشترين المعتمدة", hint: "من صفحة التقييمات" },
+  // عروض
+  couponCode: { label: "كود الخصم", hint: "أنشئه أولاً من «أكواد الخصم»" },
+  endsAt: { label: "ينتهي في" },
+  bundleDiscountPercent: { label: "خصم الطقم (%)" },
+  // مفاتيح عامة
+  enabled: { label: "مفعّل" },
+  voice: { label: "نبرة الكتابة", hint: "يكتب بها مساعد الذكاء الاصطناعي نصوص متجرك" },
+  showCategoriesMenu: { label: "قائمة الأقسام في الهيدر" },
+  showChannels: { label: "قنوات التواصل" },
+  showPaymentIcons: { label: "أيقونات طرق الدفع" },
+  showAttributesTable: { label: "جدول المواصفات" },
+  showReviews: { label: "التقييمات" },
+  showShareButtons: { label: "أزرار المشاركة" },
+  showSavings: { label: "«وفّرت كذا» بجانب السعر قبل الخصم" },
+  rememberCustomer: { label: "تذكّر بيانات العميل لطلبه التالي", hint: "على جهازه فقط" },
+  noIndex: { label: "أخفِ المتجر من محركات البحث", hint: "لا تفعّله إلا لسبب واضح" },
+  // محرك المبيعات
+  lowStockAlert: { label: "تنبيه «الكمية محدودة»", hint: "على بطاقة المنتج الذي تتبع مخزونه" },
+  threshold: { label: "يظهر عند كمية" },
+  socialProofToasts: { label: "إشعار «طلب أحدهم الآن»", hint: "من طلبات حقيقية فقط، بالاسم الأول والمدينة" },
+  minOrdersToShow: { label: "لا يظهر قبل عدد طلبات" },
+  lookbackHours: { label: "من طلبات آخر (ساعة)" },
+  exitIntentOffer: { label: "عرض قبل المغادرة", hint: "نافذة مرة واحدة لمن يهمّ بترك المتجر" },
+  showOncePerDays: { label: "لا يتكرر للزائر قبل (يوم)" },
+  recommendations: { label: "الترشيحات" },
+  frequentlyBoughtTogether: { label: "«يُشترى معاً» في صفحة المنتج" },
+};
+
+/** أسماء خاصة بمكانها (المسار كما يبنيه SchemaForm: «brand.description»، «section:hero.images»…). */
+export const CONTEXT_LABELS: Record<string, FieldMeta> = {
+  "brand.name": { label: "اسم المتجر" },
+  "brand.tagline": { label: "السطر التعريفي", hint: "جملة قصيرة تحت الاسم" },
+  "brand.description": { label: "وصف المتجر", hint: "يظهر في الفوتر وفي نتائج البحث إن لم تكتب وصفاً لها" },
+  "footer.tagline": { label: "السطر تحت الشعار في الفوتر", hint: "فارغ = السطر التعريفي للمتجر" },
+  "seo.title": { label: "عنوان متجرك في Google", hint: "فارغ = اسم المتجر وسطره التعريفي" },
+  "seo.description": { label: "الوصف في نتائج البحث", hint: "جملتان عمّا تبيعه ولمن" },
+  "section:testimonials.items": { label: "لقطات من آراء عملائك", hint: "صورة شاشة لرسالة عميل حقيقية (واتساب، إنستاجرام…)" },
+  "section:testimonials.items[].name": { label: "اسم العميل" },
+  "section:testimonials.items[].text": { label: "تعليق تحت اللقطة (اختياري)" },
+  "section:trust_badges.items": { label: "الشارات", hint: "شارة تدّعي سياسة غير مفعّلة تُخفى تلقائياً" },
+  "section:announcement.messages": { label: "الرسائل", hint: "رسالة تدّعي سياسة غير صحيحة تُخفى تلقائياً" },
+  "section:faq.items": { label: "الأسئلة" },
+  "section:promo_banner.items": { label: "العروض" },
+  "section:custom_blocks.blocks": { label: "الفقرات" },
+  "section:hero.images": { label: "الصور", hint: "صورة واحدة على الأقل لتصميم بصورة؛ 3 للكولاج و4 للمداري" },
+  "section:contact.address": { label: "عنوان المحل (اختياري)" },
+  "section:bundle.productSlugs": { label: "منتجات الطقم", hint: "من 2 إلى 5" },
+  "header.nav[].label": { label: "النص" },
+};
+
+export const ENUM_LABELS: Record<string, string> = {
+  // تصميم الواجهة
+  split: "نص وصورة",
+  editorial: "مجلة",
+  collage: "كولاج صور",
+  product_spotlight: "منتج نجم",
+  centered: "نص في المنتصف",
+  fullscreen: "صورة كاملة",
+  orbit: "مداري ثلاثي الأبعاد",
+  // تصميمات الأقسام
+  circles: "دوائر",
+  cards: "كروت",
+  stories: "ستوريز",
+  grid: "شبكة",
+  carousel: "شريط أفقي",
+  featured_first: "الأول كبير",
+  spotlight: "منتج بارز",
+  accordion: "قائمة قابلة للطي",
+  two_columns: "عمودان",
+  chat_bubbles: "فقاعات محادثة",
+  row: "صف",
+  quote: "اقتباس",
+  classic: "كلاسيكي",
+  centered_logo: "الشعار في المنتصف",
+  minimal: "بسيط",
+  gallery_left: "الصور بجانب التفاصيل",
+  gallery_stacked: "الصور فوق التفاصيل",
+  immersive: "صور بعرض الشاشة",
+  // الخلفية والمسافات والحركة
+  default: "عادية",
+  muted: "هادئة",
+  primary: "بلون المتجر",
+  dark: "داكنة",
+  gradient: "متدرجة",
+  image: "صورة",
+  ambient: "متوهجة",
+  compact: "قليلة",
+  normal: "عادية",
+  spacious: "واسعة",
+  none: "بدون",
+  fade: "تلاشٍ",
+  slide_up: "انزلاق لأعلى",
+  zoom: "تكبير",
+  stagger: "تتابع",
+  kinetic: "حركية",
+  // مصادر المنتجات
+  featured: "المميزة",
+  newest: "الأحدث",
+  best_sellers: "الأكثر مبيعاً",
+  on_sale: "عليها خصم",
+  manual: "اختيار يدوي",
+  tag: "بكلمة بحث",
+  // وجهات الروابط
+  home: "الرئيسية",
+  all_products: "كل المنتجات",
+  category: "قسم",
+  product: "منتج",
+  page: "صفحة",
+  section: "قسم في الرئيسية",
+  contact: "التواصل",
+  external: "رابط خارجي",
+  // فقرات حرة
+  heading: "عنوان",
+  paragraph: "فقرة",
+  // نبرة الكتابة
+  friendly_egyptian: "مصرية ودودة",
+  premium_formal: "فصحى راقية",
+  playful: "مرحة",
+};
+
+/** خيارات رقمية (أعمدة الشبكة). */
+export function literalLabel(field: string | undefined, v: unknown): string {
+  if (field === "columnsDesktop") return `${v} أعمدة`;
+  return String(v);
+}
+
+/** أسماء الأيقونات بالعربية (للقارئ الآلي وتلميح المرور). */
+export const ICON_LABELS: Record<string, string> = {
+  truck: "شحن", banknote: "كاش", "shield-check": "ضمان", "rotate-ccw": "استرجاع", headphones: "دعم", "badge-check": "موثّق",
+  star: "نجمة", heart: "قلب", gift: "هدية", sparkles: "لمعة", zap: "سريع", clock: "ساعة", phone: "هاتف", "message-circle": "رسالة",
+  "map-pin": "موقع", package: "طرد", "package-open": "طرد مفتوح", percent: "خصم", award: "جائزة", "thumbs-up": "إعجاب", leaf: "طبيعي",
+  flame: "رائج", crown: "تاج", gem: "جوهرة", smile: "ابتسامة", "check-circle": "تم", lock: "آمن", "credit-card": "بطاقة",
+  "shopping-bag": "حقيبة تسوق", tag: "سعر", eye: "معاينة", store: "متجر", smartphone: "موبايل", shirt: "ملابس", ruler: "مقاس",
+  scissors: "تفصيل", droplets: "سوائل", baby: "أطفال", coffee: "قهوة", "cake-slice": "حلويات", watch: "ساعة يد", sparkle: "بريق",
+  flower: "ورد", feather: "خفيف", footprints: "أحذية", glasses: "نظارات", gamepad: "ألعاب", dumbbell: "رياضة", brush: "تجميل",
+  wallet: "محفظة", "undo-2": "تراجع", repeat: "استبدال", hand: "يدوي", recycle: "صديق للبيئة", medal: "ميدالية", rocket: "انطلاق",
+  timer: "مؤقت", box: "صندوق",
+};

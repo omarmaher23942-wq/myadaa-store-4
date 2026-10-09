@@ -5,8 +5,7 @@
 //  - unstable_rethrow في كل catch يحوي redirect محتملاً.
 //  - Zod للتحقق من مدخلات الملف الشخصي مع رسائل عربية.
 //  - ActionResult موحّد للاستخدام مع useActionState.
-//  - actions جديدة: updateMerchantAvatarUrlAction، removeAvatarAction،
-//    applyGoogleAvatarAction.
+//  - applyGoogleAvatarAction (المنصة). رفع الصورة وحذفها: setAvatarAction في actions/account.ts.
 //  - revalidatePath لجميع المسارات المتأثرة.
 import { redirect, unstable_rethrow } from "next/navigation";
 import { revalidatePath } from "next/cache";
@@ -15,27 +14,19 @@ import { z } from "zod";
 import { db } from "@/db/client";
 import { merchants } from "@/db/schema";
 import { logout, getMerchantSession, setActiveStore } from "@/server/auth";
+import { normalizeEgyptianPhone } from "@/lib/phone";
 
 const ProfileSchema = z.object({
   displayName: z
     .string()
     .trim()
-    .min(2, "الاسم المعروض يجب أن يكون حرفين على الأقل")
-    .max(80, "الاسم طويل جداً — الحد الأقصى 80 حرفاً"),
+    .min(2, "الاسم حرفان على الأقل")
+    .max(80, "الاسم 80 حرفاً على الأكثر"),
   phone: z
     .string()
     .trim()
-    .refine(
-      (v) => v === "" || /^01[0125]\d{8}$/.test(v),
-      "رقم الموبايل يجب أن يبدأ بـ 01 ويتكون من 11 رقماً"
-    ),
-  avatarUrl: z
-    .string()
-    .trim()
-    .refine(
-      (v) => v === "" || /^https?:\/\//.test(v),
-      "رابط الصورة يجب أن يبدأ بـ http أو https"
-    ),
+    .transform((v) => (v ? normalizeEgyptianPhone(v) : ""))
+    .refine((v) => v !== null, "رقم موبايل مصري من 11 رقماً يبدأ بـ 01"),
 });
 
 export type ActionResult<T = undefined> =
@@ -53,7 +44,6 @@ export async function updateMerchantProfileAction(
   const raw = {
     displayName: String(formData.get("displayName") ?? ""),
     phone: String(formData.get("phone") ?? ""),
-    avatarUrl: String(formData.get("avatarUrl") ?? ""),
   };
 
   const parsed = ProfileSchema.safeParse(raw);
@@ -70,7 +60,7 @@ export async function updateMerchantProfileAction(
     };
   }
 
-  const { displayName, phone, avatarUrl } = parsed.data;
+  const { displayName, phone } = parsed.data;
 
   try {
     await db
@@ -78,13 +68,11 @@ export async function updateMerchantProfileAction(
       .set({
         displayName,
         phone: phone || null,
-        avatarUrl: avatarUrl || null,
         updatedAt: new Date(),
       })
       .where(eq(merchants.id, session.merchantId));
 
-    revalidatePath("/dashboard");
-    revalidatePath("/dashboard/settings");
+    revalidatePath("/dashboard", "layout");
     return { ok: true, data: undefined };
   } catch (err) {
     unstable_rethrow(err);
@@ -92,52 +80,6 @@ export async function updateMerchantProfileAction(
       ok: false,
       error: "تعذر حفظ التغييرات. أعد المحاولة بعد لحظات.",
     };
-  }
-}
-
-// تحديث رابط الأفاتار مباشرة بعد نجاح الرفع على UploadThing.
-export async function updateMerchantAvatarUrlAction(
-  avatarUrl: string
-): Promise<ActionResult> {
-  const session = await getMerchantSession();
-  if (!session) return { ok: false, error: "انتهت جلستك" };
-
-  const trimmed = avatarUrl.trim();
-  if (!/^https?:\/\//.test(trimmed)) {
-    return { ok: false, error: "رابط الصورة غير صالح" };
-  }
-
-  try {
-    await db
-      .update(merchants)
-      .set({ avatarUrl: trimmed, updatedAt: new Date() })
-      .where(eq(merchants.id, session.merchantId));
-
-    revalidatePath("/dashboard");
-    revalidatePath("/dashboard/settings");
-    return { ok: true };
-  } catch (err) {
-    unstable_rethrow(err);
-    return { ok: false, error: "تعذر حفظ رابط الصورة" };
-  }
-}
-
-export async function removeAvatarAction(): Promise<ActionResult> {
-  const session = await getMerchantSession();
-  if (!session) return { ok: false, error: "انتهت جلستك" };
-
-  try {
-    await db
-      .update(merchants)
-      .set({ avatarUrl: null, updatedAt: new Date() })
-      .where(eq(merchants.id, session.merchantId));
-
-    revalidatePath("/dashboard");
-    revalidatePath("/dashboard/settings");
-    return { ok: true };
-  } catch (err) {
-    unstable_rethrow(err);
-    return { ok: false, error: "تعذر حذف الصورة" };
   }
 }
 

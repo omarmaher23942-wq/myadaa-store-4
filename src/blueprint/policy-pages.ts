@@ -259,7 +259,13 @@ export function generatePolicyPage(bp: StoreBlueprint, slug: PolicySlug): Page |
 /** صفحة التاجر إن كتبها (ومفعّلة)، وإلا النسخة المولّدة. صفحة عطّلها التاجر صراحة لا تُعرض. */
 export function resolvePolicyPage(bp: StoreBlueprint, slug: string): Page | null {
   const own = bp.pages.find((p) => p.slug === slug);
-  if (own) return own.enabled && own.body.trim() ? own : own.enabled ? generatePolicyPage(bp, own.slug) : null;
+  if (own) {
+    if (!own.enabled) return null;
+    if (own.body.trim()) return own;
+    // سجل بلا نص = النسخة المولّدة بإعدادات التاجر (الظهور في الفوتر).
+    const gen = generatePolicyPage(bp, own.slug);
+    return gen ? { ...gen, showInFooter: own.showInFooter } : null;
+  }
   return (GENERATED_POLICY_SLUGS as string[]).includes(slug) ? generatePolicyPage(bp, slug as PolicySlug) : null;
 }
 

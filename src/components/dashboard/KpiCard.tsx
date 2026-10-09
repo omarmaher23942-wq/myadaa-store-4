@@ -1,9 +1,5 @@
-// Component نظيف وقابل لإعادة الاستخدام.
-// - Polymorphic: إن مُرِّر href يُغلَّف في Link، وإلا يُعرض كـ <div>.
-// - يعمل في Server أو Client (لا يستخدم hooks).
-// - Skeleton state مدمج (loading prop) بنفس أبعاد المحتوى النهائي.
-// - Sparkline SVG خام (أداء أفضل من recharts للأحجام الصغيرة).
-// - tabular-nums لضبط الأرقام العربية.
+// KpiCard — بطاقة مؤشر: القيمة، والتغير عن الفترة السابقة (أو «لا فترة سابقة» إن لم تكن هناك بيانات للمقارنة،
+// لا 0% مخترعة)، وسطر توضيح اختياري، ورسم صغير من سلسلة يومية حقيقية. تعمل في الخادم والعميل (بلا hooks).
 
 import Link from "next/link";
 import { TrendingUp, TrendingDown, Minus, type LucideIcon } from "lucide-react";
@@ -14,8 +10,13 @@ const SW = 1.75;
 export type KpiCardProps = {
   title: string;
   value: string | number;
-  delta?: number;
+  /** التغير عن الفترة السابقة. null = لا بيانات في الفترة السابقة للمقارنة. undefined = لا يُعرض. */
+  delta?: number | null;
   deltaType?: "up" | "down" | "neutral";
+  /** وحدة التغير: نسبة مئوية (الافتراضي) أو نقاط مئوية (لمعدل التحويل). */
+  deltaUnit?: "%" | "pt";
+  /** سطر توضيح تحت العنوان (مثل متوسط قيمة الطلب). */
+  hint?: string;
   icon: LucideIcon;
   sparkline?: number[];
   href?: string;
@@ -49,7 +50,7 @@ function Sparkline({
   const lastX = w;
   const lastY = h - ((data[data.length - 1]! - min) / range) * (h - 4) - 2;
 
-  const gid = `spark-${points.length}-${Math.round(lastY * 100)}`;
+  const gid = `spark-${data.join("-").slice(0, 40)}-${data.length}`;
   return (
     <svg
       viewBox={`0 0 ${w} ${h}`}
@@ -81,17 +82,21 @@ function Sparkline({
 function DeltaBadge({
   delta,
   type,
+  unit,
 }: {
-  delta: number;
+  delta: number | null;
   type: "up" | "down" | "neutral";
+  unit: "%" | "pt";
 }) {
+  if (delta === null) {
+    return (
+      <span className="rounded-full bg-edge/5 px-2 py-0.5 text-[10.5px] font-bold text-ink-3" title="لا توجد بيانات في الفترة السابقة للمقارنة">
+        لا فترة سابقة
+      </span>
+    );
+  }
   const Icon = type === "up" ? TrendingUp : type === "down" ? TrendingDown : Minus;
-  const tone =
-    type === "up"
-      ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-300"
-      : type === "down"
-        ? "bg-rose-500/10 text-rose-600 dark:text-rose-300"
-        : "bg-edge/5 text-ink-3";
+  const tone = type === "up" ? "bg-ok/10 text-ok" : type === "down" ? "bg-bad/10 text-bad" : "bg-edge/5 text-ink-3";
 
   return (
     <span
@@ -100,11 +105,14 @@ function DeltaBadge({
         tone
       )}
     >
-      <Icon className="size-3" strokeWidth={2.5} />
-      <span>
+      <Icon className="size-3" strokeWidth={2.5} aria-hidden="true" />
+      <span dir="ltr">
         {delta > 0 ? "+" : ""}
-        {delta}%
+        {delta}
+        {unit === "%" ? "%" : ""}
       </span>
+      {unit === "pt" ? <span>نقطة</span> : null}
+      <span className="sr-only">{type === "up" ? "ارتفاع" : type === "down" ? "انخفاض" : "بلا تغير"} عن الفترة السابقة</span>
     </span>
   );
 }
@@ -125,6 +133,8 @@ export function KpiCard({
   value,
   delta,
   deltaType = "neutral",
+  deltaUnit = "%",
+  hint,
   icon: Icon,
   sparkline,
   href,
@@ -138,9 +148,7 @@ export function KpiCard({
           <span aria-hidden="true" className="absolute inset-0 rounded-xl bg-nova/20 blur-md transition-opacity duration-300 group-hover:opacity-100 opacity-50" />
           <Icon className="relative size-[18px] text-nova-2" strokeWidth={SW} />
         </div>
-        {delta != null && !loading ? (
-          <DeltaBadge delta={delta} type={deltaType} />
-        ) : null}
+        {delta !== undefined && !loading ? <DeltaBadge delta={delta} type={deltaType} unit={deltaUnit} /> : null}
       </div>
 
       {loading ? (
@@ -150,12 +158,11 @@ export function KpiCard({
       ) : (
         <>
           <div className="mt-4">
-            <p className="text-[26px] font-black leading-none tracking-tight text-ink tabular-nums">
+            <p className="text-[22px] font-black leading-none tracking-tight text-ink tabular-nums sm:text-[26px]">
               {value}
             </p>
-            <p className="mt-1.5 text-[11px] font-bold text-ink-3">
-              {title}
-            </p>
+            <p className="mt-1.5 text-[12px] font-bold text-ink-2">{title}</p>
+            {hint ? <p className="mt-0.5 text-[11px] text-ink-3">{hint}</p> : null}
           </div>
 
           {sparkline && sparkline.length >= 2 ? (

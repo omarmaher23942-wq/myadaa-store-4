@@ -7,6 +7,7 @@
 import { useMemo, useState } from "react";
 import { Plus, X, Grid3x3, List, Wand2, Shirt, Palette, Ruler, Layers, Check, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { fmtNum } from "@/lib/format";
 import { colorFromName, isColorOption } from "@/lib/color-names";
 
 export type Variant = {
@@ -57,12 +58,15 @@ export function VariantMatrix({
   optionNames,
   variants,
   basePrice,
+  trackStock = true,
   onChange,
 }: {
   optionNames: string[];
   variants: Variant[];
   /** سعر المنتج بالجنيه: التركيبة بلا سعر خاص تأخذه. */
   basePrice: number;
+  /** بلا تتبع مخزون تختفي خانات الكمية (كل تركيبة متاحة ما لم يُخفها التاجر). */
+  trackStock?: boolean;
   onChange: (optionNames: string[], variants: Variant[]) => void;
 }) {
   const [options, setOptions] = useState<Option[]>(() => optionsFrom(optionNames, variants));
@@ -79,7 +83,7 @@ export function VariantMatrix({
     const live = next.filter((o) => o.name.trim() && o.values.length);
     const rows = combos(live).map((vals) => {
       const old = byKey.get(keyOf(vals));
-      return old ?? { optionValues: vals, price: null, stock: 10, isAvailable: true };
+      return old ?? { optionValues: vals, price: null, stock: null, isAvailable: true };
     });
     onChange(
       live.map((o) => o.name.trim()),
@@ -108,7 +112,7 @@ export function VariantMatrix({
 
   const live = options.filter((o) => o.name.trim() && o.values.length);
   const total = variants.reduce((a, v) => a + (v.isAvailable === false ? 0 : v.stock ?? 0), 0);
-  const matrix = live.length === 2 && view === "matrix";
+  const matrix = trackStock && live.length === 2 && view === "matrix";
   const priceOf = (v: Variant | undefined) => (v?.price ?? null) === null ? basePrice : Number(v!.price);
 
   return (
@@ -129,11 +133,11 @@ export function VariantMatrix({
                   maxLength={30}
                   className="h-10 w-40 rounded-xl border border-edge/10 bg-edge/[0.03] px-3 text-[12.5px] font-black text-ink outline-none focus:border-nova/60"
                 />
-                <span className="text-[11px] text-ink-3">{o.values.length ? `${o.values.length} قيم` : "أضف القيم"}</span>
+                <span className="text-[11px] text-ink-3">{o.values.length ? `${fmtNum(o.values.length)} ${o.values.length === 1 ? "قيمة" : o.values.length === 2 ? "قيمتان" : o.values.length <= 10 ? "قيم" : "قيمة"}` : "أضف القيم"}</span>
                 <button
                   type="button"
                   onClick={() => apply(options.filter((_, i) => i !== oi))}
-                  className="ms-auto grid size-8 place-items-center rounded-lg text-ink-3 hover:bg-rose-500/10 hover:text-rose-500"
+                  className="ms-auto grid size-9 place-items-center rounded-lg text-ink-3 hover:bg-bad/10 hover:text-bad"
                   aria-label={`حذف خيار ${o.name}`}
                 >
                   <X className="size-4" />
@@ -233,21 +237,26 @@ export function VariantMatrix({
               <Wand2 className="size-3.5 text-nova" /> للكل:
             </span>
             <span className="flex items-center gap-1">
-              <input value={bulkPrice} onChange={(e) => setBulkPrice(e.target.value.replace(/[^\d.]/g, ""))} placeholder="السعر" dir="ltr" inputMode="decimal" className="h-8 w-20 rounded-lg border border-edge/10 bg-edge/[0.04] px-2 font-mono text-[12px] font-bold text-ink outline-none" />
+              <input value={bulkPrice} onChange={(e) => setBulkPrice(e.target.value.replace(/[^\d.]/g, ""))} placeholder="السعر" dir="ltr" inputMode="decimal" className="h-8 w-20 rounded-lg border border-edge/10 bg-edge/[0.04] px-2 font-mono text-[12px] font-bold text-ink outline-none placeholder:font-sans" />
               <button type="button" disabled={!bulkPrice} onClick={() => (onChange(live.map((o) => o.name.trim()), variants.map((v) => ({ ...v, price: Number(bulkPrice) }))), setBulkPrice(""))} className="h-8 rounded-lg bg-nova/15 px-2.5 font-bold text-nova-2 disabled:opacity-40">
                 طبّق
               </button>
             </span>
-            <span className="flex items-center gap-1">
-              <input value={bulkStock} onChange={(e) => setBulkStock(e.target.value.replace(/\D/g, ""))} placeholder="المخزون" dir="ltr" inputMode="numeric" className="h-8 w-20 rounded-lg border border-edge/10 bg-edge/[0.04] px-2 font-mono text-[12px] font-bold text-ink outline-none" />
+            {trackStock ? <span className="flex items-center gap-1">
+              <input value={bulkStock} onChange={(e) => setBulkStock(e.target.value.replace(/\D/g, ""))} placeholder="المخزون" dir="ltr" inputMode="numeric" className="h-8 w-20 rounded-lg border border-edge/10 bg-edge/[0.04] px-2 font-mono text-[12px] font-bold text-ink outline-none placeholder:font-sans" />
               <button type="button" disabled={!bulkStock} onClick={() => (onChange(live.map((o) => o.name.trim()), variants.map((v) => ({ ...v, stock: Number(bulkStock) }))), setBulkStock(""))} className="h-8 rounded-lg bg-nova/15 px-2.5 font-bold text-nova-2 disabled:opacity-40">
                 طبّق
               </button>
-            </span>
+            </span> : null}
             <span className="ms-auto flex items-center gap-2 text-ink-3">
-              <b className="text-ink">{variants.length}</b> تركيبة · <b className="text-ink">{total.toLocaleString("ar-EG")}</b> قطعة
+              <b className="text-ink tabular-nums">{fmtNum(variants.length)}</b> تركيبة
+              {trackStock ? (
+                <>
+                  {" "}· <b className="text-ink tabular-nums">{fmtNum(total)}</b> قطعة
+                </>
+              ) : null}
             </span>
-            {live.length === 2 ? (
+            {trackStock && live.length === 2 ? (
               <span className="flex rounded-lg border border-edge/10 p-0.5">
                 <button type="button" onClick={() => setView("matrix")} aria-pressed={view === "matrix"} className={cn("grid size-7 place-items-center rounded-md", view === "matrix" ? "bg-nova text-white" : "text-ink-3")} aria-label="عرض المصفوفة">
                   <Grid3x3 className="size-3.5" />
@@ -294,7 +303,7 @@ export function VariantMatrix({
                         className="h-8 w-20 rounded-lg border border-edge/10 bg-edge/[0.03] px-2 font-mono text-[12px] font-bold text-ink outline-none focus:border-nova/60"
                       />
                     </label>
-                    {!matrix ? (
+                    {!matrix && trackStock ? (
                       <label className="flex items-center gap-1 text-[11px] text-ink-3">
                         مخزون
                         <input
@@ -302,7 +311,7 @@ export function VariantMatrix({
                           onChange={(e) => patch(v.optionValues, { stock: e.target.value === "" ? null : Number(e.target.value.replace(/\D/g, "")) })}
                           dir="ltr"
                           inputMode="numeric"
-                          className={cn("h-8 w-16 rounded-lg border bg-edge/[0.03] px-2 font-mono text-[12px] font-bold text-ink outline-none focus:border-nova/60", (v.stock ?? 0) === 0 ? "border-amber-400/50" : "border-edge/10")}
+                          className={cn("h-8 w-16 rounded-lg border bg-edge/[0.03] px-2 font-mono text-[12px] font-bold text-ink outline-none focus:border-nova/60", (v.stock ?? 0) === 0 ? "border-warn/50" : "border-edge/10")}
                         />
                       </label>
                     ) : null}
@@ -311,25 +320,25 @@ export function VariantMatrix({
                       onChange={(e) => patch(v.optionValues, { sku: e.target.value.slice(0, 40) || null })}
                       placeholder="الكود (اختياري)"
                       dir="ltr"
-                      className="hidden h-8 w-28 rounded-lg border border-edge/10 bg-edge/[0.03] px-2 font-mono text-[11.5px] text-ink outline-none sm:block"
+                      className="h-8 w-28 rounded-lg border border-edge/10 bg-edge/[0.03] px-2 font-mono text-[11.5px] text-ink outline-none placeholder:font-sans focus:border-nova/60"
                     />
                     <button
                       type="button"
                       role="switch"
                       aria-checked={!off}
                       onClick={() => patch(v.optionValues, { isAvailable: off })}
-                      className={cn("inline-flex h-8 items-center gap-1 rounded-lg px-2 text-[11px] font-bold", off ? "bg-edge/[0.06] text-ink-3" : "bg-emerald-500/12 text-emerald-600 dark:text-emerald-300")}
+                      className={cn("inline-flex h-8 items-center gap-1 rounded-lg px-2 text-[11px] font-bold", off ? "bg-edge/[0.06] text-ink-3" : "bg-ok/12 text-ok")}
                     >
                       {off ? <X className="size-3" /> : <Check className="size-3" />} {off ? "مخفي" : "متاح"}
                     </button>
-                    {priceOf(v) !== basePrice ? <span className="text-[10.5px] font-bold text-nova-2">{priceOf(v) > basePrice ? "+" : ""}{(priceOf(v) - basePrice).toLocaleString("ar-EG")} ج</span> : null}
+                    {priceOf(v) !== basePrice ? <span className="text-[10.5px] font-bold text-nova-2">{priceOf(v) > basePrice ? "+" : ""}{fmtNum(priceOf(v) - basePrice)} ج</span> : null}
                   </li>
                 );
               })}
             </ul>
           </div>
-          {variants.some((v) => (v.stock ?? 0) === 0 && v.isAvailable !== false) ? (
-            <p className="flex items-center gap-1.5 text-[11.5px] text-amber-600 dark:text-amber-300">
+          {trackStock && variants.some((v) => (v.stock ?? 0) === 0 && v.isAvailable !== false) ? (
+            <p className="flex items-center gap-1.5 text-[11.5px] text-warn">
               <AlertCircle className="size-3.5" /> تركيبات بمخزون صفر تظهر للعميل «نفد».
             </p>
           ) : null}
@@ -344,7 +353,7 @@ export function VariantMatrix({
 }
 
 /** مصفوفة خيارين: الصفوف قيم الخيار الأول والأعمدة قيم الثاني، وفي كل خانة مخزون التركيبة. */
-function Matrix({ rows, cols, byKey, onStock }: { rows: Option; cols: Option; byKey: Map<string, Variant>; onStock: (vals: string[], stock: number) => void }) {
+function Matrix({ rows, cols, byKey, onStock }: { rows: Option; cols: Option; byKey: Map<string, Variant>; onStock: (vals: string[], stock: number | null) => void }) {
   const rowColor = isColorOption(rows.name);
   const colColor = isColorOption(cols.name);
   return (
@@ -383,22 +392,23 @@ function Matrix({ rows, cols, byKey, onStock }: { rows: Option; cols: Option; by
                   return (
                     <td key={c} className="px-1.5 py-1.5 text-center">
                       <input
-                        value={v ? String(stock) : ""}
+                        value={v && v.stock !== null && v.stock !== undefined ? String(v.stock) : ""}
                         disabled={!v}
-                        onChange={(e) => onStock([r, c], Number(e.target.value.replace(/\D/g, "")) || 0)}
+                        placeholder="0"
+                        onChange={(e) => onStock([r, c], e.target.value === "" ? null : Number(e.target.value.replace(/\D/g, "")) || 0)}
                         onFocus={(e) => e.currentTarget.select()}
                         dir="ltr"
                         inputMode="numeric"
                         aria-label={`مخزون ${r} ${c}`}
                         className={cn(
                           "h-9 w-14 rounded-lg border text-center font-mono text-[12.5px] font-bold outline-none focus:border-nova/60 focus:ring-2 focus:ring-nova/20",
-                          stock === 0 ? "border-amber-400/40 bg-amber-400/5 text-amber-600 dark:text-amber-300" : "border-edge/10 bg-edge/[0.03] text-ink"
+                          stock === 0 ? "border-warn/40 bg-warn/5 text-warn placeholder:text-warn/60" : "border-edge/10 bg-edge/[0.03] text-ink"
                         )}
                       />
                     </td>
                   );
                 })}
-                <td className="px-3 text-center font-mono font-black text-ink-2">{sum}</td>
+                <td className="px-3 text-center font-mono font-black text-ink-2">{fmtNum(sum)}</td>
               </tr>
             );
           })}

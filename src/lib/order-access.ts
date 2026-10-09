@@ -60,3 +60,15 @@ export async function hasOrderAccess(storeId: string, code: string, orderDeviceI
   const received = Buffer.from(value);
   return received.length === expected.length && timingSafeEqual(received, expected);
 }
+
+/** رمز رابط التقييم في بريد «وصل طلبك»: يفتح صفحة تقييم هذا الطلب وحده من أي جهاز، دون كشف بياناته لمن يخمّن رقمه. */
+export function reviewToken(storeId: string, orderId: string): string {
+  return createHmac("sha256", env.AUTH_SECRET).update(`review:${storeId}:${orderId}`).digest("base64url").slice(0, 32);
+}
+
+export function validReviewToken(storeId: string, orderId: string, token: string | null | undefined): boolean {
+  if (!token) return false;
+  const expected = Buffer.from(reviewToken(storeId, orderId));
+  const received = Buffer.from(token);
+  return received.length === expected.length && timingSafeEqual(received, expected);
+}

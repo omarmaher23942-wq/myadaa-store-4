@@ -53,6 +53,10 @@
   --color-space: var(--dash-space);
   --color-space-2: var(--dash-space-2);
   --color-edge: var(--dash-edge);
+  /* حالات اللوحة الدلالية: نجاح، تنبيه، خطر (تتبدل مع الثيم، فلا تُكتب أزواج emerald/amber/rose يدوياً) */
+  --color-ok: var(--dash-ok);
+  --color-warn: var(--dash-warn);
+  --color-bad: var(--dash-bad);
 
   --animate-marquee: marquee 28s linear infinite;
   --animate-float: float 5s ease-in-out infinite;
@@ -356,7 +360,8 @@
 
 @media (max-width: 380px) {
   .container-x { padding-inline: 0.875rem; }
-  h1, .h1-responsive { font-size: 1.875rem; line-height: 1.2; }
+  /* اللوحة مستثناة: عناوينها تحدد مقاسها بنفسها (هذه القاعدة خارج الطبقات فكانت تكبّر «محرر المحتوى» إلى 30px). */
+  h1:not(.dash *), .h1-responsive { font-size: 1.875rem; line-height: 1.2; }
 }
 
 @media (max-width: 640px) {
@@ -402,6 +407,9 @@
   --dash-space-2: #ffffff;
   --dash-edge: #0d1330;
   --dash-glow: 79 99 240;
+  --dash-ok: #047857;
+  --dash-warn: #b45309;
+  --dash-bad: #be123c;
   color-scheme: light;
 }
 .dash.dark {
@@ -416,8 +424,15 @@
   --dash-space-2: #0b0f24;
   --dash-edge: #ffffff;
   --dash-glow: 111 134 255;
+  --dash-ok: #6ee7b7;
+  --dash-warn: #fcd34d;
+  --dash-bad: #fda4af;
   color-scheme: dark;
 }
+
+/* ما خلف اللوحة عند السحب الزائد على الموبايل يأخذ لون ثيمها بدل الأبيض. */
+html:has(.dash.dark) { background-color: #07091a; color-scheme: dark; }
+html:has(.dash:not(.dark)) { background-color: #f4f6fe; }
 
 /* خلفية الكون: سدم ونجوم ثابتة خلف المحتوى (طبقة واحدة، بلا أي JS). */
 .dash-cosmos { position: relative; isolation: isolate; }
@@ -452,6 +467,37 @@
   animation: dash-drift 120s linear infinite;
 }
 @keyframes dash-drift { to { background-position: 640px 320px; } }
+
+/* نافذة اللوحة (<dialog>): ورقة من الأسفل على الموبايل، وفي الوسط على الشاشات الأكبر. */
+.dash-dialog {
+  margin: auto auto 0;
+  width: 100%;
+  max-width: 100%;
+  max-height: 92dvh;
+  padding: 0;
+  overflow: auto;
+  color: var(--dash-ink);
+  background: var(--dash-space-2);
+  border: 1px solid color-mix(in srgb, var(--dash-edge) 10%, transparent);
+  border-radius: 1.25rem 1.25rem 0 0;
+  box-shadow: 0 30px 80px -20px rgb(0 0 0 / 0.5);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+@media (min-width: 640px) {
+  .dash-dialog { margin: auto; max-width: 28rem; border-radius: 1.25rem; padding-bottom: 0; }
+}
+.dash-dialog::backdrop { background: rgb(4 6 18 / 0.55); backdrop-filter: blur(4px); }
+
+/* شريط الحفظ اللاصق (محرر المنتج وغيره): زر المساعد العائم يرتفع فوقه بدل أن يغطي زر الحفظ. */
+.copilot-fab { transition: bottom 0.25s ease; }
+.dash:has([data-savebar]) .copilot-fab { bottom: calc(10.5rem + env(safe-area-inset-bottom)); }
+@media (min-width: 768px) {
+  .dash:has([data-savebar]) .copilot-fab { bottom: 6.75rem; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .dash-dialog[open] { animation: dash-dialog-in 0.18s ease-out; }
+}
+@keyframes dash-dialog-in { from { opacity: 0; transform: translateY(12px); } }
 
 /* بطاقة الداشبورد الموحّدة: زجاج خفيف وحافة متوهجة عند المرور. */
 .dash-card {

@@ -4,13 +4,14 @@ import "server-only";
 import { getBlueprint } from "@/lib/tenant";
 import { sendCustomerOrderShippedEmail, sendEmail } from "@/lib/email";
 import { storeUrl } from "@/lib/utils";
+import { reviewToken } from "@/lib/order-access";
 
-type Order = { code: string; customerName: string; customerEmail: string | null; trackingNumber?: string | null; courierName?: string | null };
+type Order = { id?: string; code: string; customerName: string; customerEmail: string | null; trackingNumber?: string | null; courierName?: string | null };
 
 const MESSAGE: Partial<Record<string, { subject: (c: string) => string; headline: string; body: string }>> = {
   confirmed: { subject: (c) => `تم تأكيد طلبك ${c}`, headline: "طلبك تأكّد", body: "أكدنا طلبك وبدأنا تجهيزه، وهنبلغك أول ما يخرج للشحن." },
   preparing: { subject: (c) => `طلبك ${c} قيد التجهيز`, headline: "بنجهّز طلبك", body: "طلبك قيد التجهيز والتغليف الآن." },
-  delivered: { subject: (c) => `تم توصيل طلبك ${c}`, headline: "وصل طلبك", body: "نتمنى يعجبك. لو عندك أي ملاحظة كلمنا في أي وقت." },
+  delivered: { subject: (c) => `تم توصيل طلبك ${c}`, headline: "وصل طلبك", body: "نتمنى يعجبك. رأيك في المنتجات يساعد غيرك يختار، ولو عندك أي ملاحظة كلمنا في أي وقت." },
   cancelled: { subject: (c) => `تم إلغاء طلبك ${c}`, headline: "تم إلغاء طلبك", body: "تم إلغاء الطلب. لو ده غير مقصود أو عندك سؤال، تواصل معنا." },
 };
 
@@ -36,12 +37,14 @@ export async function notifyCustomerOfStatus(store: { id: string; subdomain: str
   }
   const m = MESSAGE[status];
   if (!m) return;
+  // بعد التسليم: زر «قيّم مشترياتك» برابط موقّع يفتح تقييم هذا الطلب من أي جهاز.
+  const reviewUrl = status === "delivered" && order.id ? storeUrl(store.subdomain, `/review?o=${encodeURIComponent(order.code)}&t=${reviewToken(store.id, order.id)}`) : null;
   await sendEmail({
     to: order.customerEmail,
     subject: m.subject(order.code),
     headline: m.headline,
     storeName: bp.brand.name,
     paragraphs: [`أهلاً ${order.customerName.split(" ")[0]}،`, m.body, `رقم طلبك: ${order.code}`],
-    buttons: [{ title: "تابع طلبك", url: trackUrl }],
+    buttons: reviewUrl ? [{ title: "قيّم مشترياتك", url: reviewUrl }, { title: "تابع طلبك", url: trackUrl }] : [{ title: "تابع طلبك", url: trackUrl }],
   });
 }

@@ -1,18 +1,11 @@
-// C:\Users\ahmed maher\Desktop\colapia\src\app\(platform)\dashboard\layout.tsx — غلاف الداشبورد الكوني (v2).
-//
-// التعديلات الجذرية (موجة 3 + موجة 5):
-//  1) RealtimeProvider مُركّب مرة واحدة على مستوى الـ layout → لا اتصالات مكررة.
-//  2) CommandPalette متاح عالمياً (⌘K).
-//  3) OnboardingTour يظهر للتاجر الجديد (أول 7 أيام أو أول 3 زيارات).
-//  4) Skip-to-content link للأكيسيبيليتي.
-//  5) Mobile bottom nav على < md (في Sidebar).
-//  6) Theme toggle عبر next-themes (light/dark/auto).
-//  7) RealtimeSoundManager مُدمج داخل RealtimeProvider (موجة 5).
+// dashboard/layout.tsx — غلاف لوحة التاجر: القائمة، والشريط العلوي، ونبض اللوحة (الشارات وتنبيه الطلب الجديد)،
+// ولوحة الأوامر (Ctrl/⌘+K)، والمساعد نوفا، وجولة التاجر الجديد.
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { cookies, headers } from "next/headers";
 import { getMerchantSession } from "@/server/auth";
-import { RealtimeProvider } from "@/components/dashboard/RealtimeProvider";
+import { DashboardPulse } from "@/components/dashboard/DashboardPulse";
+import { attentionCounts } from "@/server/repos/attention";
 import { CommandPalette } from "@/components/dashboard/CommandPalette";
 import { DashboardSidebar } from "@/components/dashboard/DashboardSidebar";
 import { DashboardTopbar } from "@/components/dashboard/DashboardTopbar";
@@ -30,13 +23,6 @@ export const metadata: Metadata = {
 };
 
 export const dynamic = "force-dynamic";
-
-function computeTrialDaysLeft(demoExpiresAt: Date | null): number | null {
-  if (!demoExpiresAt) return null;
-  const ms = demoExpiresAt.getTime() - Date.now();
-  if (ms <= 0) return 0;
-  return Math.max(1, Math.ceil(ms / 86_400_000));
-}
 
 function isNewMerchant(merchantCreatedAt: Date | null): boolean {
   if (!merchantCreatedAt) return false;
@@ -76,9 +62,9 @@ export default async function DashboardLayout({
     );
   }
 
-  const trialDaysLeft = session.store
-    ? computeTrialDaysLeft(session.store.demoExpiresAt ?? null)
-    : null;
+  // أعداد «ما يحتاج انتباهك» من الخادم مع أول رسم، فلا تومض الشارات من صفر.
+  const pulseAt = new Date().toISOString();
+  const pulse = session.storeId ? await attentionCounts(session.storeId).catch(() => null) : null;
 
   // فحص tour الدخول الأول: نستخدم cookie لمنع التكرار المزعج.
   const jar = await cookies();
@@ -98,10 +84,7 @@ export default async function DashboardLayout({
         تخطي إلى المحتوى الرئيسي
       </a>
 
-      <RealtimeProvider
-        merchantId={session.merchantId}
-        storeId={session.storeId}
-      >
+      <DashboardPulse storeId={session.storeId} initial={pulse} initialAt={pulseAt}>
         <div className="flex min-h-dvh">
           <DashboardSidebar
             merchant={{
@@ -112,16 +95,14 @@ export default async function DashboardLayout({
             store={
               session.store
                 ? {
+                    id: session.store.id,
                     name: session.store.name,
                     subdomain: session.store.subdomain,
                     status: session.store.status,
                   }
                 : null
             }
-            badges={{
-              orders: 0,
-              trialDaysLeft,
-            }}
+            allStores={session.stores.map((s) => ({ id: s.id, name: s.name, subdomain: s.subdomain, status: s.status }))}
           />
 
           <div className="flex min-w-0 flex-1 flex-col">
@@ -130,13 +111,13 @@ export default async function DashboardLayout({
               merchantEmail={session.merchant.email}
               merchantAvatarUrl={session.merchant.avatarUrl}
               storeStatus={session.store?.status ?? null}
-              notificationCount={0}
+              acceptingOrders={session.store?.acceptingOrders ?? true}
               theme={theme}
             />
 
             <main
               id="dashboard-main"
-              className="min-w-0 flex-1 p-4 pb-24 md:p-8 md:pb-8"
+              className="min-w-0 flex-1 p-4 pb-40 md:p-8 md:pb-28"
             >
               {children}
             </main>
@@ -144,14 +125,14 @@ export default async function DashboardLayout({
         </div>
 
         {/* Command Palette — متاح عالمياً بـ ⌘K */}
-        <CommandPalette storeHref={session.store ? storeUrl(session.store.subdomain) : null} />
+        <CommandPalette storeHref={session.store ? storeUrl(session.store.subdomain) : null} hasStore={Boolean(session.store)} />
 
         {/* المساعد الذكي نوفا — يجيب من بيانات المتجر (Ctrl+J) */}
         {session.store ? <Copilot storeName={session.store.name} /> : null}
 
         {/* Onboarding Tour — للتاجر الجديد فقط */}
-        {showTour ? <OnboardingTour /> : null}
-      </RealtimeProvider>
+        <OnboardingTour autoOpen={showTour} />
+      </DashboardPulse>
     </div>
   );
 }

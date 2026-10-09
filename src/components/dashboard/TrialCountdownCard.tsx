@@ -1,226 +1,117 @@
 "use client";
 
-// Client Component: عداد حي بالثواني + ألوان تحذيرية متدرجة.
-// - setInterval مع cleanup صحيح.
-// - aria-live="polite" للإعلان عن التحديثات.
-// - احترام prefers-reduced-motion (يقفز مباشرة بدون transition).
-// - Progress ring دائري SVG (أوضح بصرياً من الخطي لحالة واحدة).
-// - يحسب النسبة على أساس 8 ساعات كحد أقصى افتراضي.
-
+// TrialCountdownCard — الوقت المتبقي من التجربة المجانية وحلقة تقدم على مدتها الحقيقية (من بدايتها لنهايتها).
+// أول رسم يستخدم وقت الخادم نفسه فلا يختلف HTML الخادم عن المتصفح (لا hydration mismatch)، ثم يتحدث كل ثانية
+// في الساعة الأخيرة وكل 30 ثانية قبلها.
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Clock, ArrowLeft, Sparkles } from "lucide-react";
-import { useReducedMotion } from "motion/react";
+import { useEffect, useState } from "react";
+import { ArrowLeft, Clock, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { arCount, fmtNum, type ArNoun } from "@/lib/format";
 
-const SW = 1.75;
-const MAX_REFERENCE_MS = 8 * 60 * 60 * 1000; // 8 ساعات كمرجع بصري.
+const HOUR: ArNoun = { one: "ساعة", two: "ساعتان", few: "ساعات", many: "ساعة", other: "ساعة" };
+const MINUTE: ArNoun = { one: "دقيقة", two: "دقيقتان", few: "دقائق", many: "دقيقة", other: "دقيقة" };
+const SECOND: ArNoun = { one: "ثانية", two: "ثانيتان", few: "ثوانٍ", many: "ثانية", other: "ثانية" };
 
-type Tone = "emerald" | "amber" | "rose" | "expired";
+type Tone = "ok" | "warn" | "bad" | "expired";
 
-const TONE_STYLES: Record<
-  Tone,
-  { ring: string; text: string; chip: string; stroke: string }
-> = {
-  emerald: {
-    ring: "border-emerald-500/25 bg-emerald-500/[0.04]",
-    text: "text-emerald-600 dark:text-emerald-300",
-    chip: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300",
-    stroke: "#34d399",
-  },
-  amber: {
-    ring: "border-amber-500/25 bg-amber-500/[0.04]",
-    text: "text-amber-700 dark:text-amber-300",
-    chip: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
-    stroke: "#fbbf24",
-  },
-  rose: {
-    ring: "border-rose-500/30 bg-rose-500/[0.05]",
-    text: "text-rose-600 dark:text-rose-300",
-    chip: "bg-rose-500/15 text-rose-600 dark:text-rose-300",
-    stroke: "#fb7185",
-  },
-  expired: {
-    ring: "border-edge/10 bg-edge/[0.02]",
-    text: "text-ink-3",
-    chip: "bg-edge/5 text-ink-3",
-    stroke: "#64748b",
-  },
+const TONES: Record<Tone, { box: string; text: string }> = {
+  ok: { box: "border-ok/25 bg-ok/[0.05]", text: "text-ok" },
+  warn: { box: "border-warn/30 bg-warn/[0.06]", text: "text-warn" },
+  bad: { box: "border-bad/30 bg-bad/[0.06]", text: "text-bad" },
+  expired: { box: "border-edge/10 bg-edge/[0.02]", text: "text-ink-3" },
 };
 
-function pickTone(msLeft: number): Tone {
-  if (msLeft <= 0) return "expired";
-  const hours = msLeft / 3_600_000;
-  if (hours < 1) return "rose";
-  if (hours < 4) return "amber";
-  return "emerald";
+function toneOf(ms: number): Tone {
+  if (ms <= 0) return "expired";
+  if (ms < 3600e3) return "bad";
+  if (ms < 4 * 3600e3) return "warn";
+  return "ok";
 }
 
-function formatRemaining(msLeft: number): string {
-  if (msLeft <= 0) return "انتهت التجربة";
-  const totalSec = Math.floor(msLeft / 1000);
-  const days = Math.floor(totalSec / 86_400);
-  const hours = Math.floor((totalSec % 86_400) / 3600);
-  const minutes = Math.floor((totalSec % 3600) / 60);
-  const seconds = totalSec % 60;
-
-  if (days > 0) return `${days} يوم و ${hours} ساعة`;
-  if (hours > 0) return `${hours} ساعة و ${minutes} دقيقة`;
-  return `${minutes} دقيقة و ${seconds} ثانية`;
+/** «19 ساعة و51 دقيقة»، «ساعتان و5 دقائق»، «12 دقيقة و30 ثانية». */
+function remaining(ms: number): string {
+  const s = Math.floor(ms / 1000);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (h > 0) return m > 0 ? `${arCount(h, HOUR)} و${arCount(m, MINUTE)}` : arCount(h, HOUR);
+  if (m > 0) return `${arCount(m, MINUTE)} و${arCount(sec, SECOND)}`;
+  return arCount(sec, SECOND);
 }
 
 export function TrialCountdownCard({
   expiresAt,
-  storeName,
+  startedAt,
+  serverNow,
   planPrice,
 }: {
   expiresAt: string;
-  storeName: string;
+  startedAt: string | null;
+  serverNow: number;
   planPrice: number;
 }) {
-  const targetMs = useMemo(() => new Date(expiresAt).getTime(), [expiresAt]);
-  const [now, setNow] = useState<number>(() => Date.now());
-  const reduce = useReducedMotion();
-  const mountedRef = useRef(false);
+  const end = new Date(expiresAt).getTime();
+  const start = startedAt ? new Date(startedAt).getTime() : end - 24 * 3600e3;
+  const [now, setNow] = useState(serverNow);
+
+  const left = Math.max(0, end - now);
+  const lastHour = left > 0 && left < 3600e3;
 
   useEffect(() => {
-    mountedRef.current = true;
-    // حدّث كل ثانية — تكلفة ضئيلة، دقة مطلوبة.
-    const id = setInterval(() => {
-      if (mountedRef.current) setNow(Date.now());
-    }, 1000);
-    return () => {
-      mountedRef.current = false;
-      clearInterval(id);
-    };
-  }, []);
+    setNow(Date.now());
+    const id = setInterval(() => setNow(Date.now()), lastHour ? 1000 : 30_000);
+    return () => clearInterval(id);
+  }, [lastHour]);
 
-  const msLeft = Math.max(0, targetMs - now);
-  const tone = pickTone(msLeft);
-  const styles = TONE_STYLES[tone];
-
-  const progress = Math.min(1, msLeft / MAX_REFERENCE_MS);
-  const total = 2 * Math.PI * 26;
-  const dashOffset = total * (1 - progress);
+  const tone = toneOf(left);
+  const t = TONES[tone];
+  const progress = end > start ? Math.min(1, left / (end - start)) : 0;
+  const circ = 2 * Math.PI * 26;
 
   return (
-    <section
-      aria-label="حالة التجربة"
-      className={cn(
-        "relative overflow-hidden rounded-2xl border p-5 transition-colors",
-        styles.ring
-      )}
-    >
-      <div className="flex items-center gap-5">
-        {/* Progress ring */}
-        <div className="relative size-16 shrink-0">
-          <svg viewBox="0 0 64 64" className="size-16 -rotate-90" aria-hidden>
+    <section aria-label="التجربة المجانية" className={cn("relative overflow-hidden rounded-2xl border p-4 sm:p-5", t.box)}>
+      <div className="flex flex-wrap items-center gap-4">
+        <div className={cn("relative size-14 shrink-0", t.text)}>
+          <svg viewBox="0 0 64 64" className="size-14 -rotate-90" aria-hidden="true">
+            <circle cx="32" cy="32" r="26" fill="none" stroke="currentColor" strokeOpacity="0.15" strokeWidth="5" />
             <circle
               cx="32"
               cy="32"
               r="26"
               fill="none"
-              stroke="rgba(255,255,255,0.08)"
-              strokeWidth="5"
-            />
-            <circle
-              cx="32"
-              cy="32"
-              r="26"
-              fill="none"
-              stroke={styles.stroke}
+              stroke="currentColor"
               strokeWidth="5"
               strokeLinecap="round"
-              strokeDasharray={total}
-              strokeDashoffset={dashOffset}
-              style={{
-                transition: reduce ? "none" : "stroke-dashoffset 0.9s linear",
-              }}
+              strokeDasharray={circ}
+              strokeDashoffset={circ * (1 - progress)}
+              className="motion-safe:transition-[stroke-dashoffset] motion-safe:duration-700"
             />
           </svg>
-          <div className="absolute inset-0 flex items-center justify-center">
-            <Clock
-              className={cn("size-5", styles.text)}
-              strokeWidth={SW}
-            />
-          </div>
+          <Clock className="absolute inset-0 m-auto size-5" strokeWidth={1.75} aria-hidden="true" />
         </div>
 
-        {/* Text + CTA */}
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span
-              className={cn(
-                "rounded-full px-2 py-0.5 text-[10px] font-black",
-                styles.chip
-              )}
-            >
-              {tone === "expired" ? "انتهت" : "تجربة نشطة"}
-            </span>
-            <p className="truncate text-[12.5px] font-bold text-ink-2">
-              {storeName}
-            </p>
-          </div>
-
-          {/* aria-live: يُعلن التغيير للقارئ الشاشي كل ثانية */}
-          <p
-            aria-live="polite"
-            aria-atomic="true"
-            className={cn(
-              "mt-1.5 text-lg font-black tabular-nums",
-              styles.text
-            )}
-          >
-            {tone === "expired" ? "انتهت التجربة" : formatRemaining(msLeft)}
+          <p className="text-[12px] font-bold text-ink-2">{tone === "expired" ? "انتهت التجربة المجانية" : "متبقٍ من تجربتك المجانية"}</p>
+          <p role="timer" className={cn("mt-1 text-[18px] font-black tabular-nums sm:text-[20px]", t.text)}>
+            {tone === "expired" ? "متجرك مجمّد الآن" : remaining(left)}
           </p>
-
-          <p className="mt-0.5 text-[11px] text-ink-3">
+          <p className="mt-0.5 text-[11.5px] leading-5 text-ink-3">
             {tone === "expired"
-              ? "فعّل المتجر للاحتفاظ بمنتجاتك وطلباتك."
-              : "متبقٍ قبل تجميد المتجر تلقائياً."}
+              ? "ادفع مرة واحدة ليعود متجرك ويصبح ملكك، بمنتجاته وطلباته كما هي."
+              : "بعدها يُجمَّد المتجر حتى الدفع. ادفع مرة واحدة ويصبح متجرك ملكك بلا اشتراك."}
           </p>
         </div>
 
-        {/* CTA */}
         <Link
           href="/dashboard/billing"
-          className={cn(
-            "group hidden shrink-0 items-center gap-2 rounded-xl px-4 py-2.5 text-[12px] font-black transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-space md:inline-flex",
-            tone === "expired"
-              ? "bg-white text-space hover:bg-ink focus-visible:ring-edge"
-              : "bg-gradient-to-b from-nova to-nova-deep text-white shadow-lg shadow-nova/25 hover:shadow-xl focus-visible:ring-nova-2"
-          )}
+          className="group inline-flex min-h-11 w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-nova to-nova-deep px-4 text-[12.5px] font-black text-white shadow-lg shadow-nova/25 transition hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-nova-2 focus-visible:ring-offset-2 focus-visible:ring-offset-space sm:w-auto"
         >
-          <Sparkles className="size-3.5" strokeWidth={2.25} />
-          <span>
-            {tone === "expired"
-              ? "فعّل الآن"
-              : `فعّل بـ ${planPrice} ج`}
-          </span>
-          <ArrowLeft
-            className="size-3.5 transition-transform group-hover:-translate-x-0.5"
-            strokeWidth={2.5}
-          />
+          <Sparkles className="size-4" strokeWidth={2.25} aria-hidden="true" />
+          ادفع {fmtNum(planPrice)} ج مرة واحدة
+          <ArrowLeft className="size-3.5 transition-transform group-hover:-translate-x-0.5" strokeWidth={2.5} aria-hidden="true" />
         </Link>
       </div>
-
-      {/* Mobile CTA — full width تحت */}
-      <Link
-        href="/dashboard/billing"
-        className={cn(
-          "mt-4 flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-[12px] font-black md:hidden",
-          tone === "expired"
-            ? "bg-white text-space"
-            : "bg-gradient-to-b from-nova to-nova-deep text-white shadow-lg shadow-nova/25"
-        )}
-      >
-        <Sparkles className="size-3.5" strokeWidth={2.25} />
-        <span>
-          {tone === "expired"
-            ? "فعّل الآن"
-            : `فعّل بـ ${planPrice} ج`}
-        </span>
-      </Link>
     </section>
   );
 }

@@ -24,7 +24,8 @@ export async function listVisibleCategories(storeId: string) {
       slug: categories.slug,
       imageUrl: categories.imageUrl,
       parentId: categories.parentId,
-      productCount: sql<number>`(select count(*) from products p where p.category_id = ${categories.id} and p.status = 'active' and p.deleted_at is null)`.mapWith(Number),
+      // مرجع صريح للجدول الخارجي (categories.id): Drizzle يكتب ${categories.id} هنا بلا اسم جدوله فيُقرأ كـ p.id ويصير العدد صفراً.
+      productCount: sql<number>`(select count(*) from products p where p.category_id = categories.id and p.status = 'active' and p.deleted_at is null)`.mapWith(Number),
     })
     .from(categories)
     .where(and(eq(categories.storeId, storeId), eq(categories.isVisible, true)))
@@ -136,7 +137,8 @@ export async function productReviews(storeId: string, productId: string) {
         body: reviews.body,
         imageUrls: reviews.imageUrls,
         isApproved: reviews.isApproved,
-        isVerified: reviews.isVerified,
+        // «موثّق» فقط لتقييم جاء من طلب حقيقي (التقييمات القديمة كانت موثّقة افتراضياً بلا طلب).
+        isVerified: sql<boolean>`(${reviews.isVerified} and ${reviews.orderId} is not null)`,
         createdAt: reviews.createdAt,
       })
       .from(reviews)

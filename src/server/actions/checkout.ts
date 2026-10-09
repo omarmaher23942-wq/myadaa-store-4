@@ -3,7 +3,7 @@
 import { headers } from "next/headers";
 import { after } from "next/server";
 import { z } from "zod";
-import { and, eq, sql, inArray, isNull } from "drizzle-orm";
+import { and, eq, ne, sql, inArray, isNull } from "drizzle-orm";
 import {
   getStoreBySubdomain,
   getBlueprint,
@@ -41,6 +41,8 @@ import {
   emitOrderCreated,
   emitCartAbandoned,
 } from "@/server/realtime/emitters";
+import { syncVariantTotals } from "@/server/inventory";
+import { dbErrorInfo, PG_CHECK, PG_UNIQUE } from "@/lib/db-errors";
 
 class CheckoutError extends Error {
   constructor(message: string, readonly field?: string) {
@@ -68,8 +70,6 @@ export type Quote =
 
 const GENERIC_ERROR = "حدث خطأ أثناء تنفيذ طلبك، يرجى المحاولة ثانية";
 const IDEM_TTL_S = 900;
-const PG_UNIQUE = "23505";
-const PG_CHECK = "23514";
 const ORDER_CODE_ATTEMPTS = 3;
 
 const GOV_CODES = GOVERNORATES.map((g) => g.code) as unknown as [
@@ -78,30 +78,6 @@ const GOV_CODES = GOVERNORATES.map((g) => g.code) as unknown as [
 ];
 const isGovernorate = (v: string) =>
   (GOV_CODES as readonly string[]).includes(v);
-
-function dbErrorInfo(e: unknown): { code?: string; constraint?: string } {
-  const x = e as {
-    code?: unknown;
-    constraint?: unknown;
-    message?: unknown;
-    cause?: {
-      code?: unknown;
-      constraint?: unknown;
-      message?: unknown;
-    };
-  } | null;
-  const str = (a: unknown, b: unknown) =>
-    typeof a === "string" ? a : typeof b === "string" ? b : undefined;
-  const message = `${String(x?.message ?? "")} ${String(
-    x?.cause?.message ?? ""
-  )}`;
-  return {
-    code: str(x?.code, x?.cause?.code),
-    constraint:
-      str(x?.constraint, x?.cause?.constraint) ??
-      message.match(/constraint "([^"]+)"/)?.[1],
-  };
-}
 
 const cartItemsSchema = z
   .array(
@@ -320,7 +296,9 @@ async function validateDiscount(
         and(
           eq(orders.storeId, storeId),
           eq(orders.customerPhone, phone),
-          eq(orders.discountCode, code)
+          eq(orders.discountCode, code),
+          // الطلب الملغي لا يستهلك حق العميل في الكود.
+          ne(orders.status, "cancelled")
         )
       );
     if ((row?.c ?? 0) >= d.perCustomerLimit)
@@ -484,6 +462,7 @@ export async function placeOrderAction(
       code = newOrderCode();
 
       try {
+        const variantProducts = [...new Set(lines.filter((l) => l.v && l.p.trackStock && l.v.stock !== null).map((l) => l.p.id))];
         await db.batch([
           db
             .insert(customers)
@@ -583,6 +562,9 @@ export async function placeOrderAction(
                 })
                 .where(eq(productVariants.id, l.v!.id))
             ),
+
+          // مخزون المنتج ذي التركيبات = مجموع تركيباته بعد الخصم (وإلا يبقى رقمه القديم ويخفي النفاد).
+          ...(variantProducts.length ? [syncVariantTotals(db, store.id, variantProducts)] : []),
 
           ...(discountId
             ? [

@@ -13,6 +13,7 @@ import { EditorProvider } from "@/editor/EditorProvider";
 import { Header } from "@/components/storefront/Header";
 import { Footer } from "@/components/storefront/Footer";
 import { CartDrawer } from "@/components/storefront/CartDrawer";
+import { PromoFromLink } from "@/components/storefront/PromoFromLink";
 import { ConversionWidgets } from "@/components/storefront/ConversionWidgets";
 import { Analytics } from "@/components/storefront/Analytics";
 import { FrozenGate } from "@/components/storefront/FrozenGate";
@@ -69,10 +70,8 @@ export default async function StoreLayout({ children, params }: Props) {
   // مسارات إدارية لها layouts خاصة (لا Header/Footer عليها).
   const isAdminRoute =
     pathname === "/admin" || pathname.startsWith("/admin/");
-  const isReviewPageRoute =
-    pathname === "/review" || pathname.startsWith("/review/");
-
-  if (isAdminRoute || isReviewPageRoute) {
+  // صفحة التقييم صارت بهوية المتجر (رأسه وتذييله) كأي صفحة فيه.
+  if (isAdminRoute) {
     return (
       <div className="min-h-screen bg-[#f8fafc] font-sans text-slate-900">
         {children}
@@ -159,6 +158,12 @@ export default async function StoreLayout({ children, params }: Props) {
         >
           <div className="s-progress" aria-hidden="true" />
           {bp.design.motion.depth ? <DepthController /> : null}
+          {!store.acceptingOrders ? (
+            // وضع الإجازة: يعرفه الزائر من أول صفحة، لا عند الدفع بعد أن يملأ سلته.
+            <p role="status" className="s-announce px-4 py-2 text-center text-[13px] font-bold">
+              {store.vacationMessage || "المتجر لا يستقبل طلبات الآن، وسنعود قريباً"}
+            </p>
+          ) : null}
           <Header
             header={bp.header}
             brand={bp.brand}
@@ -179,6 +184,7 @@ export default async function StoreLayout({ children, params }: Props) {
           />
 
           <CartDrawer />
+          <PromoFromLink subdomain={store.subdomain} />
           <ConversionWidgets />
           <Analytics storeId={store.id} />
         </div>

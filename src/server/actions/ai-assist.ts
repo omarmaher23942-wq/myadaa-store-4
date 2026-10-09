@@ -6,6 +6,11 @@ import { getMerchantStoreOrNull } from "@/server/auth";
 import { getBlueprintOrNull } from "@/lib/tenant";
 import { MerchantAiError, merchantAiStatus, merchantObject, type MerchantAiStatus } from "@/ai/merchant";
 import { log } from "@/lib/logger";
+import { and, eq, isNull } from "drizzle-orm";
+import { getTenantDb } from "@/db/tenant";
+import { products } from "@/db/schema";
+import { buildSearchText } from "@/lib/arabic";
+import { invalidateStoreCache } from "@/lib/tenant";
 
 type Result<T> = { ok: true; data: T } | { ok: false; error: string; code?: string };
 
@@ -109,4 +114,38 @@ export async function copilotAction(raw: unknown): Promise<Result<string>> {
     void log.error("store", "copilot_crashed", { storeId: s.storeId }, "", e);
     return { ok: false, error: "تعذّر الرد الآن، أعد المحاولة." };
   }
+}
+
+/** يحفظ محتوى كتبه الذكاء الاصطناعي لمنتج بلا وصف (من «أكمل الأوصاف الناقصة»): لا يكتب فوق ما كتبه التاجر. */
+export async function applyProductCopyAction(raw: unknown): Promise<{ ok: true } | { ok: false; error: string }> {
+  const s = await getMerchantStoreOrNull();
+  if (!s) return { ok: false, error: "غير مصرح" };
+  const parsed = z.object({ id: z.string().uuid(), copy: copyOutput }).safeParse(raw);
+  if (!parsed.success) return { ok: false, error: "بيانات غير صالحة" };
+  const { id, copy } = parsed.data;
+  const db = await getTenantDb(s.storeId);
+  const [p] = await db
+    .select()
+    .from(products)
+    .where(and(eq(products.id, id), eq(products.storeId, s.storeId), isNull(products.deletedAt)))
+    .limit(1);
+  if (!p) return { ok: false, error: "المنتج غير موجود" };
+  if (p.description?.trim()) return { ok: true };
+  const tags = [...new Set([...p.tags, ...copy.tags.map((t) => t.trim()).filter(Boolean)])].slice(0, 12);
+  const description = copy.description.slice(0, 4000);
+  const shortDescription = p.shortDescription?.trim() ? p.shortDescription : copy.shortDescription.slice(0, 160);
+  await db
+    .update(products)
+    .set({
+      description,
+      shortDescription,
+      seoTitle: p.seoTitle?.trim() ? p.seoTitle : copy.seoTitle.slice(0, 70),
+      seoDescription: p.seoDescription?.trim() ? p.seoDescription : copy.seoDescription.slice(0, 160),
+      tags,
+      searchText: buildSearchText([p.name, shortDescription, description, ...tags]),
+      updatedAt: new Date(),
+    })
+    .where(and(eq(products.id, id), eq(products.storeId, s.storeId)));
+  await invalidateStoreCache(s.store);
+  return { ok: true };
 }

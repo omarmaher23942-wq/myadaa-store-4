@@ -106,12 +106,17 @@ async function fetchCategoriesForSection(
     eq(categoriesTable.isVisible, true)
   );
 
+  // استعلام واحد: العدد وصورة الغلاف لكل قسم بـ subquery بدل استعلامين لكل قسم. الغلاف صورة القسم إن رفعها التاجر،
+  // وإلا صورة أول منتج منشور فيه.
+  const live = sql`p.store_id = ${storeId} and p.category_id = categories.id and p.status = 'active' and p.deleted_at is null`;
   const rows = await db
     .select({
       id: categoriesTable.id,
       name: categoriesTable.name,
       slug: categoriesTable.slug,
-      sortOrder: categoriesTable.sortOrder,
+      imageUrl: categoriesTable.imageUrl,
+      productCount: sql<number>`(select count(*) from products p where ${live})`.mapWith(Number),
+      firstImage: sql<string | null>`(select p.images->0->>'url' from products p where ${live} and jsonb_array_length(p.images) > 0 order by p.sort_order asc limit 1)`,
     })
     .from(categoriesTable)
     .where(
@@ -122,54 +127,13 @@ async function fetchCategoriesForSection(
     .orderBy(asc(categoriesTable.sortOrder))
     .limit(12);
 
-  if (rows.length === 0) return [];
-
-  // جلب صورة أول منتج لكل قسم + عدده.
-  const enriched = await Promise.all(
-    rows.map(async (c) => {
-      const [first] = await db
-        .select({ images: products.images })
-        .from(products)
-        .where(
-          and(
-            eq(products.storeId, storeId),
-            eq(products.categoryId, c.id),
-            eq(products.status, "active"),
-            isNull(products.deletedAt)
-          )
-        )
-        .orderBy(asc(products.sortOrder))
-        .limit(1);
-
-      const [countRow] = await db
-        .select({ c: sql<number>`count(*)`.mapWith(Number) })
-        .from(products)
-        .where(
-          and(
-            eq(products.storeId, storeId),
-            eq(products.categoryId, c.id),
-            eq(products.status, "active"),
-            isNull(products.deletedAt)
-          )
-        );
-
-      const imgs = Array.isArray(first?.images) ? first!.images : [];
-      const firstUrl =
-        imgs.length > 0 && imgs[0] && typeof imgs[0] === "object" && "url" in imgs[0]
-          ? String((imgs[0] as { url: unknown }).url || "")
-          : null;
-
-      return {
-        id: c.id,
-        name: c.name,
-        slug: c.slug,
-        productCount: countRow?.c ?? 0,
-        firstProductImage: firstUrl,
-      };
-    })
-  );
-
-  return enriched;
+  return rows.map((c) => ({
+    id: c.id,
+    name: c.name,
+    slug: c.slug,
+    productCount: c.productCount,
+    firstProductImage: c.imageUrl || c.firstImage || null,
+  }));
 }
 
 // ─── Main async dispatcher ─────────────────────────────────────────────────
@@ -217,6 +181,8 @@ export async function renderSection(
       return <Block.PromoBanner key={s.id} s={s} />;
 
     case "countdown_offer":
+      // عرض انتهى موعده (أو بلا موعد صالح) لا يُعرض: عدّاد أصفار إلحاح كاذب.
+      if (!(Date.parse(s.endsAt) > Date.now())) return null;
       return <Block.CountdownOffer key={s.id} s={s} />;
 
     case "trust_badges": {

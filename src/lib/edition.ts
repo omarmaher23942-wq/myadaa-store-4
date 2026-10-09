@@ -11,3 +11,6 @@ export const CUSTOMER_ACCOUNTS = false as boolean;
 export const DASHBOARD_TITLE_TEMPLATE = "%s · لوحة التحكم";
 
 export const PLATFORM_ONLY_NAV = ["/dashboard/billing", "/dashboard/store", "/dashboard/design"] as const;
+
+/** دخولك للوحة بالبريد وكلمة المرور (تغييرها من الإعدادات). */
+export const OWNER_LOGIN = "password" as "google" | "password";

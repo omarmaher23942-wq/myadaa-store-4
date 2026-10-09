@@ -47,10 +47,11 @@ export const fileRouter = {
     })
     .onUploadComplete(async ({ file }) => ({ url: file.ufsUrl })),
 
-  customerAudioReview: f({ audio: { maxFileSize: "16MB", maxFileCount: 1 } })
+  // صور تقييم العميل (صفحة «قيّم مشترياتك»): 3 صور بحد أقصى، بحد معدل لكل عنوان، لمتجر ظاهر فقط.
+  customerReviewImage: f({ image: { maxFileSize: "4MB", maxFileCount: 3 } })
     .input(z.object({ subdomain: z.string().min(1).max(63) }))
     .middleware(async ({ req, input }) => {
-      if (!(await allow("quote", `ut_audio:${clientIp(req.headers)}`))) {
+      if (!(await allow("review", `ut_review:${clientIp(req.headers)}`))) {
         throw new UploadThingError("محاولات كثيرة، حاول بعد دقائق");
       }
       const store = await getStoreBySubdomain(input.subdomain);
